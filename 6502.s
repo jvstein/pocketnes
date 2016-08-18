@@ -6,6 +6,7 @@
 	INCLUDE memory.h
 	INCLUDE io.h
 	INCLUDE ppu.h
+	INCLUDE sound.h
 
 	IMPORT |wram_globals0$$Base|
 	IMPORT ui	;from ui.c
@@ -18,6 +19,7 @@
 	EXPORT agb_vbl
 	EXPORT cpustate
 	EXPORT rommap
+	EXPORT frametotal
 ;----------------------------------------------------------------------------
 _xx;	???					;invalid opcode
 ;----------------------------------------------------------------------------
@@ -1065,22 +1067,29 @@ line0
 
 	ldr r1,=REG_P1		;refresh input every frame
 	ldrh r0,[r1]
-	eor r0,r0,#0xff
+		eor r0,r0,#0xff
+		eor r0,r0,#0x300
 	ldr r1,AGBjoypad
 	eor r1,r1,r0
-	and r1,r1,r0
-	str r0,AGBjoypad
+	ands r1,r1,r0		;r1=button state (0->1)
+	str r0,AGBjoypad	;r0=button state (raw)
+
+	ldr r2,fiveminutes
+	movne r2,#0x4700
+	subs r2,r2,#1
+	str r2,fiveminutes
+	bleq suspend		;sleep after 5 minutes of inactivity
 
 	ldr r3,hackflags
 	tst r3,#NOSCALING
 	beq %F0
 	ldr r3,windowtop
 	tst r0,#0x100		;R scroll
-	addeq r3,r3,#1
+	addne r3,r3,#2
 	cmp r3,#79
 	movhi r3,#79
 	tst r0,#0x200		;L scroll
-	subeqs r3,r3,#1
+	subnes r3,r3,#2
 	movmi r3,#0
 	str r3,windowtop
 0
@@ -1088,15 +1097,14 @@ line0
 	cmp r2,#0
 	ldmeqfd sp!,{nes_nz-nes_pc,globalptr,nes_zpage,pc}	;exit here if doing single frame
 
-	tst r0,#0x200		;L
-	bne %F0
-		tst r1,#0x04	;+SEL
-		ldrne r2,adjustblend
-		addne r2,r2,#1
-		strne r2,adjustblend
-0
-	tst r0,#0x300		;L+R?
-	bne line0x
+	tst r1,#0x200		;L for BG adjust
+	ldrne r2,adjustblend
+	addne r2,r2,#1
+	strne r2,adjustblend
+
+	tst r0,#0x100
+	tstne r0,#0x200		;L+R?
+	beq line0x
 	str r3,[sp,#-4]!
 	bl ui
 	ldr r3,[sp],#4
@@ -1108,7 +1116,9 @@ line0x
 	strb r1,ppustat		;vbl clear, sprite0 clear
 	str r1,scanline		;reset scanline count
 
-	bl newframe
+	bl newframe		;display update
+
+	bl updatesound
 
  [ DEBUG
 	ldrb r0,agb_vbl
@@ -1136,14 +1146,14 @@ l01
 	adr r0,cpuregs
 	ldmia r0,{nes_nz-nes_pc}	;restore 6502 state
 
-	ldr r0,=341*CYCLE
+	ldr r0,cyclesperscanline
 	add cycles,cycles,r0
-	adr r0,line1_240
+	adr r0,line1_to_240
 	str r0,nexttimeout
 
 	ldr pc,scanlinehook
-line1_240 ;------------------------
-	ldr r0,=341*CYCLE
+line1_to_240 ;------------------------
+	ldr r0,cyclesperscanline
 	add cycles,cycles,r0
 
 	ldr r1,scanline
@@ -1159,10 +1169,7 @@ line241 ;---------------------------
 	add r0,r0,#1
 	str r0,frame
  [ DEBUG
-	ldrb r0,hackflags			;darken screen during NES vblank
-	tst r0,#PROFILING
-	beq %F0
-	mov r1,#REG_BASE
+	mov r1,#REG_BASE			;darken screen during NES vblank
 	mov r0,#0x00f1
 	strh r0,[r1,#REG_BLDMOD]
 	mov r0,#0x0003
@@ -1170,7 +1177,6 @@ line241 ;---------------------------
 	ldrh r0,[r1,#REG_VCOUNT]
 	mov r1,#18
 	bl debug_
-0
  ]
 	mov r1,#0x80
 	strb r1,ppustat		;vbl flag
@@ -1198,24 +1204,24 @@ line241 ;---------------------------
 	encodePC
 	sub cycles,cycles,#3*7*CYCLE
 0
-	ldr r0,=341*CYCLE
+	ldr r0,cyclesperscanline
 	add cycles,cycles,r0
-	adr r1,line242_261
+	adr r1,line242_to_end
 	str r1,nexttimeout
 
 	mov r0,#241
 	str r0,scanline
 
 	ldr pc,scanlinehook
-line242_261 ;------------------------
-	ldr r0,=341*CYCLE
+line242_to_end ;------------------------
+	ldr r0,cyclesperscanline
 	add cycles,cycles,r0
 
 	ldr r1,scanline
+	ldr r2,lastscanline
 	add r1,r1,#1
 	str r1,scanline
-	sub r1,r1,#200
-	cmp r1,#61	;)
+	cmp r1,r2
 	adreq addy,line0
 	streq addy,nexttimeout
 
@@ -1250,6 +1256,7 @@ irq6502
 
 	fetch 7
 ;----------------------------------------------------------------------------
+fiveminutes DCD 5*60*60
 dontstop DCD 0
 agb_vbl DCB 0		;nonzero when AGB enters vblank
  [ DEBUG
@@ -1263,6 +1270,7 @@ nes_reset	;called by loadcart (r0-r9 are free to use)
 	mov addy,lr
 
 	bl IO_reset_
+	bl sound_reset_
 	bl ppureset_
 ;---SRAM setup
 	ldr r0,hackflags
@@ -1270,6 +1278,14 @@ nes_reset	;called by loadcart (r0-r9 are free to use)
 	ldreq r1,=sram_W
 	ldrne r1,=sram_W2		;allow writes to cart sram
 	str r1,writemem_tbl+12
+;---NTSC/PAL
+	tst r0,#PALTIMING
+	ldreq r1,=341*CYCLE
+	ldrne r1,=320*CYCLE
+	str r1,cyclesperscanline
+	ldreq r1,=261
+	ldrne r1,=311
+	str r1,lastscanline
 ;---cpu reset
 	tst r0,#NOCPUHACK	;load opcode set
 	adr r1,jmpops
@@ -1293,6 +1309,8 @@ nr0	ldr r5,[r1,r4,lsl#2]
 	ldr r0,=NES_RAM+0x1ff
 	str r0,nes_s		;S=FF
 	mov cycles,#0
+
+	str nes_a,frame		;frame count reset
 
 	;(clear irq/nmi/res source)...
 
@@ -1369,7 +1387,10 @@ cpustate
 	DCD 0 ;nexttimeout:  jump here when cycles runs out
 	DCD 0 ;scanline
 	DCD 0 ;scanlinehook
+frametotal		;let ui.c see frame count for savestates
 	DCD 0 ;frame
+	DCD 0 ;cyclesperscanline (341*CYCLE or 320*CYCLE)
+	DCD 0 ;lastscanline (261 or 311)
 ;----------------------------------------------------------------------------
 	END
 

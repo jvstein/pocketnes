@@ -3,6 +3,8 @@
 	INCLUDE cart.h
 	INCLUDE io.h
 	INCLUDE 6502.h
+	INCLUDE sound.h
+	INCLUDE mappers.h
 
 	EXPORT ppu_init
 	EXPORT ppureset_
@@ -160,16 +162,11 @@ ppi0	mov r0,#0
 	mov r0,#1			;1 word transfer
 	strh r0,[r1,#REG_DM1CNT_L]
 
-	add r0,r1,#REG_BG0CNT		;DMA2 goes here
-	str r0,[r1,#REG_DM2DAD]
-	mov r0,#1			;1 word transfer
-	strh r0,[r1,#REG_DM2CNT_L]
-
 	add r2,r1,#REG_IE
 	mov r0,#-1
 	strh r0,[r2,#2]		;stop pending interrupts
-	mov r0,#0x11
-	strh r0,[r2]		;allow vblank,timer1 irqs
+	ldr r0,=0x1011
+	strh r0,[r2]		;key,vblank,timer1 irq enable
 	mov r0,#1
 	strh r0,[r2,#8]		;master irq enable
 
@@ -202,8 +199,8 @@ irqhandler	;r0-r3,r12 are safe to use
 	ldr r1,[r2,#REG_IE]!
 	and r1,r1,r1,lsr#16	;r1=IE&IF
 	;---
-	;ands r0,r1,#0x10
-	;bne timer1_irq
+	ands r0,r1,#0x10
+	bne timer1_irq
 	ands r0,r1,#0x01
 	bne vblank_irq
 	;----
@@ -277,10 +274,10 @@ vbl4	add r1,r1,#4
 	bmi vbl1
 vbl5
 
-	ldrb r0,hackflags		;get DMA1,2 source..
+	ldrb r0,hackflags		;get DMA1,3 source..
 	tst r0,#NOSCALING
 	ldreq r3,=DMA1BUFF
-	ldreq r4,=DMA2BUFF
+	ldreq r4,=DMA3BUFF
 	beq vbl7
 	ldr r0,windowtop+12
 	ldr r3,=DISPCNTBUFF
@@ -288,27 +285,10 @@ vbl5
 	add r3,r3,r0,lsl#1
 	add r4,r4,r0,lsl#1
 vbl7
-	mov r1,#REG_BASE		;setup HBLANK DMA for display scroll:
-	strh r1,[r1,#REG_DM0CNT_H]		;DMA stop
-	ldr r0,=DMA0BUFF
-	ldr r2,[r0],#4
-	str r2,[r1,#REG_BG0HOFS]		;set 1st value manually, HBL is AFTER 1st line
-	ldr r0,=0xA660				;noIRQ hblank 32bit repeat incsrc inc_reloaddst
-	strh r0,[r1,#REG_DM0CNT_H]		;DMA go
-					;setup HBLANK DMA for DISPCNT (BG/OBJ enable)
-	strh r1,[r1,#REG_DM1CNT_H]		;DMA stop
-	ldrh r2,[r3],#2
-	strh r2,[r1,#REG_DISPCNT]		;set 1st value manually, HBL is AFTER 1st line
-	str r3,[r1,#REG_DM1SAD]			;dmasrc=
-	ldr r0,=0xA240				;noIRQ hblank 16bit repeat incsrc fixeddst
-	strh r0,[r1,#REG_DM1CNT_H]		;DMA go
-					;setup HBLANK DMA for BG CHR
-	strh r1,[r1,#REG_DM2CNT_H]		;DMA stop
-	ldr r2,[r4],#2
-	strh r2,[r1,#REG_BG0CNT]		;set 1st value manually, HBL is AFTER 1st line
-	str r4,[r1,#REG_DM2SAD]			;dmasrc=
-	ldr r0,=0xA240				;noIRQ hblank 16bit repeat incsrc fixeddst
-	strh r0,[r1,#REG_DM2CNT_H]		;DMA go
+	mov r1,#REG_BASE
+	strh r1,[r1,#REG_DM0CNT_H]	;DMA stop
+	strh r1,[r1,#REG_DM1CNT_H]
+	strh r1,[r1,#REG_DM3CNT_H]
 
 	ldr r0,dmaoambuffer		;OAM transfer:
 	str r0,[r1,#REG_DM3SAD]
@@ -317,6 +297,28 @@ vbl7
 	mov r0,#128
 	strh r0,[r1,#REG_DM3CNT_L]		;128 words (512 bytes)
 	mov r0,#0x8400				;noIRQ hblank 32bit repeat incsrc fixeddst
+	strh r0,[r1,#REG_DM3CNT_H]		;DMA go
+
+	ldr r0,=DMA0BUFF		;setup HBLANK DMA for display scroll:
+	ldr r2,[r0],#4
+	str r2,[r1,#REG_BG0HOFS]		;set 1st value manually, HBL is AFTER 1st line
+	ldr r0,=0xA660				;noIRQ hblank 32bit repeat incsrc inc_reloaddst
+	strh r0,[r1,#REG_DM0CNT_H]		;DMA go
+					;setup HBLANK DMA for DISPCNT (BG/OBJ enable)
+	ldrh r2,[r3],#2
+	strh r2,[r1,#REG_DISPCNT]		;set 1st value manually, HBL is AFTER 1st line
+	str r3,[r1,#REG_DM1SAD]			;dmasrc=
+	ldr r0,=0xA240				;noIRQ hblank 16bit repeat incsrc fixeddst
+	strh r0,[r1,#REG_DM1CNT_H]		;DMA go
+					;setup HBLANK DMA for BG CHR
+	add r0,r1,#REG_BG0CNT
+	str r0,[r1,#REG_DM3DAD]
+	ldr r2,[r4],#2
+	strh r2,[r1,#REG_BG0CNT]
+	str r4,[r1,#REG_DM3SAD]
+	mov r0,#1				;1 word transfer
+	strh r0,[r1,#REG_DM3CNT_L]
+	ldr r0,=0xA240				;noIRQ hblank 16bit repeat incsrc fixeddst
 	strh r0,[r1,#REG_DM3CNT_H]		;DMA go
 
 	msr cpsr_f,lr
@@ -387,7 +389,7 @@ nf0	ldrh r0,[r1],#2
 	bmi nf0
 
 	ldr r1,=BG0CNTBUFF+YSTART*2
-	ldr r2,=DMA2BUFF
+	ldr r2,=DMA3BUFF
 	add r3,r2,#160*2
 nf2	ldrh r0,[r1],#2
 	strh r0,[r2],#2
@@ -729,11 +731,13 @@ writeBG		;loadcart jumps here
 	cmp addy,#0x3c0
 	bhs writeattrib
 ;writeNT
+		cmp r0,#0xfd	;mapper 9 shit..
 	mov addy,addy,lsl#1
 	ldrh r1,[r2,addy]	;use old color
 	and r1,r1,#0xf000
 	orr r0,r0,r1
 	strh r0,[r2,addy]	;write tile#
+		bhs mapper9BGcheck
 	mov pc,lr
 writeattrib
 	stmfd sp!,{r3,r4,lr}

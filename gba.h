@@ -9,13 +9,14 @@ typedef signed char s8;
 typedef signed short s16;
 typedef signed long s32;
 
-#define NOSCALING 8	//from equates.h
+#define NOSCALING 64	//hackflags (from equates.h)
+#define SCALESPRITES 128
 
 #define MEM_PALETTE (u16*)0x5000000
 #define MEM_VRAM (u16*)0x6000000
 #define MEM_OAM (u32*)0x7000000
-#define MEM_IRQVECT *(u32*)0x3007FFC
-
+//#define MEM_IRQVECT *(u32*)0x3007FFC
+#define MEM_SRAM (u8*)0xe000000
 #define SCREENBASE (u16*)0x6003800
 
 #define REG_DISPCNT *(volatile u32*)0x4000000
@@ -107,4 +108,12 @@ typedef signed long s32;
 #define REG_BLDMOD *(u16*)0x4000050
 #define REG_COLY *(u16*)0x4000054
 #define REG_SGCNT0_L *(u16*)0x4000080
+#define REG_SGBIAS *(u16*)0x4000088
+#define REG_BG2X *(u32*)0x4000028
+#define REG_BG2Y *(u32*)0x400002c
+#define REG_BG2PA *(u16*)0x4000020
+#define REG_BG2PB *(u16*)0x4000022
+#define REG_BG2PC *(u16*)0x4000024
+#define REG_BG2PD *(u16*)0x4000026
+
 #endif

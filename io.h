@@ -3,5 +3,5 @@
 	IMPORT IO_W
 	IMPORT joypad_write_ptr
 	IMPORT joy0_W
-	IMPORT timer1_irq
+	IMPORT suspend
 	END

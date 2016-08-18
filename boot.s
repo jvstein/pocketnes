@@ -9,7 +9,7 @@
 	IMPORT |Image$$RW$$Limit|
 	IMPORT |Image$$ZI$$Base|
 	IMPORT |Image$$ZI$$Limit|
- [ BUILD = "ARMDEBUG"
+ [ BUILD = "DEBUG"
 	IMPORT |zzzzz$$Base|
  ]
 
@@ -36,7 +36,7 @@
 ;----------------------------------------------------------
 __main
 ;----------------------------------------------------------
-	[ BUILD = "ARMDEBUG"
+	[ BUILD = "DEBUG"
 		mov r0, #0x10	;usr mode
 		msr cpsr_f, r0
 	]
@@ -46,7 +46,7 @@ __main
 
 	ldr r4,=textstart		;textstart=ptr to NES rom info
 	ldr r0,=|Image$$RO$$Limit|
- [ BUILD = "ARMDEBUG"
+ [ BUILD = "DEBUG"
 	ldr r1,=|zzzzz$$Base|
  |
 	ldr r1,=|Image$$RW$$Limit|
@@ -83,10 +83,14 @@ _1	CMP	r3, r1 ; Zero init
 
  [ DEBUG
 	ldr r0,=NES_RAM
-	cmp r1,r0
-iwramcodeistoobigsodonteventry bhi iwramcodeistoobigsodonteventry
+	cmp r1,r0		;sanity check - make sure iwram code fits in iwram
+giveup	bhi giveup
  ]
 	str r6,[r4]		;textstart
+
+	mov r0,#0x14
+	ldr r1,=REG_WSCNT
+	strh r0,[r1]		;3/1 wait state
 
 	b C_entry
 ;----------------------------------------------------------

@@ -1,35 +1,26 @@
 	INCLUDE equates.h
 	INCLUDE memory.h
 	INCLUDE ppu.h
+	INCLUDE sound.h
+
+	IMPORT C_entry	;from main.c
 
 	EXPORT IO_reset_
 	EXPORT IO_R
 	EXPORT IO_W
 	EXPORT joypad_write_ptr
 	EXPORT joy0_W
-	EXPORT timer1_irq
-	EXPORT automask
+	EXPORT joycfg
 	EXPORT spriteinit
+	EXPORT suspend
 
  AREA rom_code, CODE, READONLY ;-- - - - - - - - - - - - - - - - - - - - - -
 
-freqtbl
-	INCLUDE freqtbl.h
 scaleparms
 	DCD 0x0000,0x0100,0xff01,0x0150,0xfeb6,OAM_BUFFER1+6,AGB_OAM+518
 ;----------------------------------------------------------------------------
 IO_reset_
 ;----------------------------------------------------------------------------
-	ldrb r0,cartflags
-	tst r0,#VS
-	ldr r1,=joypad_read_ptr		;pick joypad read (normal or VS)
-	ldreq r0,=joy0_R
-	ldrne r0,=joyVS0_R
-	str r0,[r1],#4
-	ldreq r0,=void
-	ldrne r0,=joyVS1_R
-	str r0,[r1]
-
 	adr r6,scaleparms		;set sprite scaling params
 	ldmia r6,{r0-r6}
 
@@ -66,13 +57,6 @@ IO_reset_
 		strh r0,[r6],#8
 		strh r4,[r6]
 
-	mov r1,#REG_BASE
-	mov r0,#0x00020000
-	str r0,[r1,#REG_SGCNT0_L]	;master volume & channel enable
-
-	mov r0,#0x80
-	strh r0,[r1,#REG_SGCNT1]	;sound master enable
-
 	ldrb r0,hackflags
 ;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 spriteinit	;build yscale_lookup tbl (called by ui.c) r0=hackflags
@@ -100,18 +84,6 @@ si4	mov r2,r1,lsr#24
 
  AREA wram_code1, CODE, READWRITE ;-- - - - - - - - - - - - - - - - - - - - - -
 ;----------------------------------------------------------------------------
-timer1_irq
-;----------------------------------------------------------------------------
-	strh r0,[r2,#2]		;IF clear
-
-;	mov r1,#REG_BASE
-;	strh r1,[r1,#REG_DM2CNT_H]	;DMA stop
-;	mov r0,   #0xb600
-;	orr r0,r0,#0x0040			;noIRQ fifo 32bit repeat incsrc fixeddst
-;	strh r0,[r1,#REG_DM2CNT_H]	;DMA go
-
-	bx lr
-;----------------------------------------------------------------------------
 IO_R		;I/O read
 ;----------------------------------------------------------------------------
 	sub r2,addy,#0x4000
@@ -123,10 +95,9 @@ IO_R		;I/O read
 	ldr pc,[r1,r2,lsl#2]
 
 io_read_tbl
-	DCD void	;4015 (sound)
-joypad_read_ptr
+	DCD _4015r	;4015 (sound)
 	DCD joy0_R	;4016: controller 1
-	DCD void	;4017: controller 2
+	DCD joy1_R	;4017: controller 2
 ;----------------------------------------------------------------------------
 IO_W		;I/O write
 ;----------------------------------------------------------------------------
@@ -136,149 +107,31 @@ IO_W		;I/O write
 	adr r1,io_write_tbl
 	ldr pc,[r1,r2,lsl#2]
 io_write_tbl
-	DCD s00_W
-	DCD s01_W
-	DCD s02_W
-	DCD s03_W
+	DCD _4000w
+	DCD _4001w
+	DCD _4002w
+	DCD _4003w
 	DCD _4004w
 	DCD _4005w
 	DCD _4006w
 	DCD _4007w
-	DCD void;_4008w
-	DCD void;_4009w
-	DCD void;_400aw
-	DCD void;_400bw
-	DCD void;_400cw
-	DCD void;_400dw
-	DCD void;_400ew
-	DCD void;_400fw
-	DCD void;_4010w
-	DCD void;_4011w
-	DCD void;_4012w
-	DCD void;_4013w
+	DCD _4008w
+	DCD void
+	DCD _400aw
+	DCD _400bw
+	DCD _400cw
+	DCD void
+	DCD _400ew
+	DCD _400fw
+	DCD _4010w
+	DCD _4011w
+	DCD _4012w
+	DCD _4013w
 	DCD dma_W	;$4014: Sprite DMA transfer
-	DCD _4015_w
+	DCD _4015w
 joypad_write_ptr
 	DCD joy0_W	;$4016: Joypad 0 write
 	DCD void	;$4017: ?
-;----------------------------------------------------------------------------
-s00_W	;(4000)
-;----------------------------------------------------------------------------
-	and r1,r0,#0xc0		;duty cycle
-	orr r1,r1,r0,lsl#12
-	orr r0,r1,#0x3f
-	mov r2,#REG_BASE
-	strh r0,[r2,#REG_SG10_H]
-
-	ldr r0,s0_save
-	mov r0,r0,lsl#1
-	ldr r1,=freqtbl
-	ldrh r0,[r1,r0]
-	orr r0,r0,#0x8000
-	;strh r0,[r2,#REG_SG11]
-
-	mov pc,lr
-;----------------------------------------------------------------------------
-s01_W	;(4001)
-;----------------------------------------------------------------------------
-	mov r1,#REG_BASE
-	mov r0,#0x08
-	strh r0,[r1,#REG_SG10_L]
-	mov pc,lr
-;----------------------------------------------------------------------------
-s02_W	;(4002)
-;----------------------------------------------------------------------------
-	strb r0,s0_save
-	ldr r0,s0_save
-	mov r0,r0,lsl#1
-
-	ldr r1,=freqtbl
-	ldrh r0,[r1,r0]
-
-	mov r2,#REG_BASE
-	strh r0,[r2,#REG_SG11]
-	mov pc,lr
-;----------------------------------------------------------------------------
-s03_W	;(4003)
-;----------------------------------------------------------------------------
-	and r0,r0,#7
-	strb r0,s0_save+1
-	ldr r0,s0_save
-	mov r0,r0,lsl#1
-
-	ldr r1,=freqtbl
-	ldrh r0,[r1,r0]
-
-	orr r0,r0,#0x8000
-	mov r2,#REG_BASE
-	strh r0,[r2,#REG_SG11]
-	mov pc,lr
-
-s0_save DCD 0
-;----------------------------------------------------------------------------
-_4004w
-;----------------------------------------------------------------------------
-	and r1,r0,#0xc0		;duty cycle
-	orr r1,r1,r0,lsl#12
-	orr r0,r1,#0x3f
-	mov r1,#REG_BASE
-	strh r0,[r1,#REG_SG20]
-
-	ldr r0,s1_save
-	mov r0,r0,lsl#1
-	ldr r1,=freqtbl
-	ldrh r0,[r1,r0]
-	orr r0,r0,#0x8000
-	mov r2,#REG_BASE
-	;strh r0,[r2,#REG_SG21]
-
-	mov pc,lr
-;----------------------------------------------------------------------------
-_4005w
-;----------------------------------------------------------------------------
-	mov pc,lr
-;----------------------------------------------------------------------------
-_4006w
-;----------------------------------------------------------------------------
-	strb r0,s1_save
-	ldr r0,s1_save
-	mov r0,r0,lsl#1
-
-	ldr r1,=freqtbl
-	ldrh r0,[r1,r0]
-
-	mov r2,#REG_BASE
-	strh r0,[r2,#REG_SG21]
-	mov pc,lr
-;----------------------------------------------------------------------------
-_4007w
-;----------------------------------------------------------------------------
-	and r0,r0,#7
-	strb r0,s1_save+1
-	ldr r0,s1_save
-	mov r0,r0,lsl#1
-
-	ldr r1,=freqtbl
-	ldrh r0,[r1,r0]
-
-	orr r0,r0,#0x8000
-	mov r2,#REG_BASE
-	strh r0,[r2,#REG_SG21]
-	mov pc,lr
-
-s1_save DCD 0
-;----------------------------------------------------------------------------
-_4015_w
-;----------------------------------------------------------------------------
-	and r0,r0,#0x0f
-	orr r0,r0,r0,lsl#4
-	mov r0,r0,lsl#8
-	orr r0,r0,#0x77
-
-	mov r1,#REG_BASE
-	strh r0,[r1,#REG_SGCNT0_L]	;master volume & channel enable
-
-	mov pc,lr
 ;----------------------------------------------------------------------------
 dma_W	;(4014)		sprite DMA transfer
 ;----------------------------------------------------------------------------
@@ -305,17 +158,18 @@ PRIORITY EQU 0x800	;AGB OBJ priority (2/3)
 	str r0,oambuffer+8
 
 	ldr r1,hackflags
-	tst r1,#NOSCALING
-	moveq r6,#0x100		;r6=rot/scale flag
-	movne r6,#0
+	tst r1,#SCALESPRITES
+	movne r6,#0x100		;r6=rot/scale flag
+	moveq r6,#0
 
-	beq dm0			;do autoscroll
-	tst r1,#SPRITEFOLLOW+MEMFOLLOW
+	tst r1,#NOSCALING
 	beq dm0
+	tst r1,#SPRITEFOLLOW+MEMFOLLOW
+	beq dm0				;do autoscroll
 	ldr r3,AGBjoypad
 	tst r3,#0x100
-	tstne r3,#0x200
-	beq dm0				;stop if L/R pressed (manual scroll)
+	tsteq r3,#0x200
+	bne dm0				;stop if L/R pressed (manual scroll)
 	mov r3,r1,lsr#8
 	bic r3,r3,#0xff0000
 	tst r1,#SPRITEFOLLOW
@@ -483,23 +337,28 @@ joy0_W		;4016
 	tst r0,#1
 	movne pc,lr
 
-		ldreq r2,frame
-		movs r2,r2,lsr#2 ;autofire alternates every other frame
+		ldr r2,frame
+		movs r2,r2,lsr#2 ;C=frame&2 (autofire alternates every other frame)
 	ldr r1,AGBjoypad
-	adr addy,dulr2rldu
 	and r0,r1,#0xf0
-		ldr r2,automask
-		andcc r1,r1,r2
-		tstcc r1,#0x100		;R?
-		andeq r1,r1,r2,lsr#16
+		ldr r2,joycfg
+		andcs r1,r1,r2
+		movcss addy,r1,lsr#9	;R?
+		andcs r1,r1,r2,lsr#16
+	adr addy,dulr2rldu
 	and r1,r1,#0x0f
 	ldrb r0,[addy,r0,lsr#4]
 	orr r1,r1,r0
-	str r1,joy0data
+
+	tst r2,#0x80000000
+	streq r1,joy0data
+	strne r1,joy1data
+
 	mov pc,lr
 
-automask DCD -1		;byte0 for autofire, byte2 for auto w/ R button
+joycfg DCD 0x00ff01ff ;byte0=auto mask, byte1=(saves R), byte2=R auto mask, MSB=joy1/joy2
 joy0data DCD 0
+joy1data DCD 0
 dulr2rldu DCB 0x00,0x80,0x40,0xc0, 0x10,0x90,0x50,0xd0, 0x20,0xa0,0x60,0xe0, 0x30,0xb0,0x70,0xf0
 ;----------------------------------------------------------------------------
 joy0_R		;4016
@@ -508,24 +367,53 @@ joy0_R		;4016
 	mov r1,r0,lsr#1
 	and r0,r0,#1
 	str r1,joy0data
-	mov pc,lr
-;----------------------------------------------------------------------------
-joyVS0_R	;4016
-;----------------------------------------------------------------------------
-	ldr r0,joy0data
-	mov r1,r0,lsr#1
-	and r0,r0,#1
-	str r1,joy0data
+
+	ldrb r1,cartflags
+	tst r1,#VS
+	moveq pc,lr
 
 	ldr r2,AGBjoypad
-	tst r2,#8		;start=coin
+	tst r2,#8		;start=coin (VS)
 	orrne r0,r0,#0x40
 
 	mov pc,lr
 ;----------------------------------------------------------------------------
-joyVS1_R	;4017
+joy1_R		;4017
 ;----------------------------------------------------------------------------
-	mov r0,#0xf8	;VS switches
+	ldr r0,joy1data
+	mov r1,r0,lsr#1
+	and r0,r0,#1
+	str r1,joy1data
+
+	ldrb r1,cartflags
+	tst r1,#VS
+	orrne r0,r0,#0xf8		;VS switches
 	mov pc,lr
 ;----------------------------------------------------------------------------
+suspend	;called from ui.c and 6502.s
+;-------------------------------------------------
+	stmfd sp!,{r0,r1,lr}
+	mov r3,#REG_BASE
+
+	ldr r1,=REG_P1CNT
+	ldr r0,=0xc00c			;interrupt on start+sel
+	strh r0,[r3,r1]
+
+	ldrh r1,[r3,#REG_SGCNT0_L]
+	strh r3,[r3,#REG_SGCNT0_L]	;sound off
+
+	ldrh r0,[r3,#REG_DISPCNT]
+	orr r0,r0,#0x80
+	strh r0,[r3,#REG_DISPCNT]	;LCD off
+
+	swi 0x030000
+	
+	ldrh r0,[r3,#REG_DISPCNT]
+	bic r0,r0,#0x80
+	strh r0,[r3,#REG_DISPCNT]	;LCD on
+
+	strh r1,[r3,#REG_SGCNT0_L]	;sound on
+
+	ldmfd sp!,{r0,r1,pc}
+;--------------------------------------------------
 	END

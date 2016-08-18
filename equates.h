@@ -3,7 +3,7 @@
 
 DEBUG		SETL {FALSE}
 
-;BUILD		SETS "ARMDEBUG"/"GBA"	(defined at cmdline)
+;BUILD		SETS "DEBUG"/"GBA"	(defined at cmdline)
 ;----------------------------------------------------------------------------
 
 NES_RAM		EQU 0x3004800	;$400 byte align for 6502 stack shit
@@ -21,10 +21,12 @@ MAPPED_RGB	EQU NES_VRAM-64*2	;mapped NES palette (for VS unisys)
 DISPCNTBUFF	EQU MAPPED_RGB-240*2
 DMA1BUFF	EQU DISPCNTBUFF-164*2
 BG0CNTBUFF	EQU DMA1BUFF-240*2
-DMA2BUFF	EQU BG0CNTBUFF-164*2
-SCROLLBUFF1	EQU DMA2BUFF-240*4
+DMA3BUFF	EQU BG0CNTBUFF-164*2
+SCROLLBUFF1	EQU DMA3BUFF-240*4
 SCROLLBUFF2	EQU SCROLLBUFF1-240*4
 DMA0BUFF	EQU SCROLLBUFF2-164*4
+;PCMSAMPLES	EQU 256
+;PCMWAV		EQU DMA0BUFF-PCMSAMPLES
 
 AGB_IRQVECT	EQU 0x3007FFC
 AGB_PALETTE	EQU 0x5000000
@@ -51,9 +53,16 @@ REG_SG10_H	EQU 0x62
 REG_SG11	EQU 0x64
 REG_SG20	EQU 0x68
 REG_SG21	EQU 0x6C
+REG_SG30_L	EQU 0x70
+REG_SG30_H	EQU 0x72
+REG_SG31	EQU 0x74
+REG_SG40	EQU 0x78
+REG_SG41	EQU 0x7c
 REG_SGCNT0_L	EQU 0x80
 REG_SGCNT1	EQU 0x84
 REG_SGCNT0_H	EQU 0x82
+REG_SGBIAS	EQU 0x88
+REG_SGWR0_L	EQU 0x90
 REG_DM0SAD	EQU 0xB0
 REG_DM0DAD	EQU 0xB4
 REG_DM0CNT_L	EQU 0xB8
@@ -72,8 +81,11 @@ REG_DM3CNT_L	EQU 0xDC
 REG_DM3CNT_H	EQU 0xDE
 REG_SGFIFOB_L	EQU 0xA4
 REG_TM0D	EQU 0x100
+REG_TM0CNT	EQU 0x102
 REG_IE		EQU 0x200
 REG_P1		EQU 0x4000130
+REG_P1CNT	EQU 0x132
+REG_WSCNT	EQU 0x4000204
 
 		;r0,r1,r2=temp regs
 nes_nz		RN r3 ;bit 31=N, Z=1 if bits 0-7=0
@@ -118,6 +130,8 @@ nexttimeout # 4
 scanline # 4
 scanlinehook # 4
 frame # 4
+cyclesperscanline # 4
+lastscanline # 4
 			;ppu.s (wram_globals1)
 AGBjoypad # 4
 adjustblend # 4
@@ -137,7 +151,7 @@ ppuctrl1 # 1
 readtemp # 1
  # 1 ;align
 			;cart.s (wram_globals2)
-mapperdata # 16
+mapperdata # 32
 nes_chr_map # 8
 old_chr_map # 8
 agb_bg_map # 16
@@ -145,6 +159,7 @@ agb_obj_map # 8
 bg_recent # 4
 
 rombase # 4
+romnumber # 4
 hackflags # 4
 BGmirror # 4
 
@@ -164,14 +179,16 @@ MIRROR		EQU 0x01 ;horizontal mirroring
 SRAM		EQU 0x02 ;save SRAM
 TRAINER		EQU 0x04 ;trainer present
 SCREEN4		EQU 0x08 ;4way screen layout
-VS		EQU 0x10 ;VS unisys
+VS		EQU 0x10 ;VS unisystem
 ;-----------------------------------------------------------hackflags
 USEPPUHACK	EQU 1	;use $2002 hack
 NOCPUHACK	EQU 2	;don't use JMP hack
-NOSCALING	EQU 8	;defined in GBA.H too
+PALTIMING	EQU 4	;0=NTSC 1=PAL
 SPRITEFOLLOW	EQU 16	;(with bits 8-23 of hackflags)
 MEMFOLLOW	EQU 32	;...
-PROFILING	EQU 64
+NOSCALING	EQU 64	;also defined in GBA.H
+SCALESPRITES	EQU 128	;also defined in GBA.H
+
 ;bits 24-31=SRAM slot
 ;----------------------------------------------------------------------------
 CYCLE		EQU 16 ;one cycle (341*CYCLE cycles per scanline)

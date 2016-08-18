@@ -290,7 +290,6 @@ _type   SETA      _ZP
         subs nes_nz,nes_a,r0,lsl#24
         mov nes_nz,nes_nz,asr#24 ;NZ
         mrs nes_c,cpsr          ;C
-        str nes_c,nes_v         ;V
 	MEND
 
         MACRO
@@ -308,7 +307,6 @@ _type   SETA      _ZP
         subs nes_nz,r1,r0,lsl#24
         mov nes_nz,nes_nz,asr#24 ;NZ
         mrs nes_c,cpsr          ;C
-        str nes_c,nes_v         ;V
 	MEND
 
         MACRO
@@ -326,7 +324,6 @@ _type   SETA      _ZP
         subs nes_nz,r1,r0,lsl#24
         mov nes_nz,nes_nz,asr#24 ;NZ
         mrs nes_c,cpsr           ;C
-        str nes_c,nes_v          ;V
 	MEND
 
         MACRO

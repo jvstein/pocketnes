@@ -37,21 +37,25 @@ write0		;$8000-8001
 
 	ldrb r1,cmd
 	strb r0,cmd
-	eor r0,r0,r1
-	tst r0,#0x80
-	moveq pc,lr
+	eor addy,r0,r1
+	tst addy,#0x80
+	beq wr0
 			;CHR base switch (0000/1000)
-	ldr r0,nes_chr_map
-	ldr r1,nes_chr_map+4
-	str r1,nes_chr_map
-	str r0,nes_chr_map+4
-	adrl addy,vram_map
-	stmfd sp!,{r3-r7}
-	ldmia addy,{r0-r7}
-	stmia addy!,{r4-r7}
-	stmia addy,{r0-r3}
-	ldmfd sp!,{r3-r7}
-	b updateBGCHR_
+	ldr r1,nes_chr_map
+	ldr r2,nes_chr_map+4
+	str r2,nes_chr_map
+	str r1,nes_chr_map+4
+	stmfd sp!,{r3-r7,lr}
+	adrl lr,vram_map
+	ldmia lr,{r0-r7}
+	stmia lr!,{r4-r7}
+	stmia lr,{r0-r3}
+	bl updateBGCHR_
+	ldmfd sp!,{r3-r7,lr}
+wr0
+	tst addy,#0x40
+	bne romswitch
+	mov pc,lr
 w8001
 	ldrb r1,cmd
 	tst r1,#0x80	;reverse CHR?

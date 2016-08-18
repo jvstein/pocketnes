@@ -1,25 +1,29 @@
 #include <stdio.h>
 #include <string.h>
 #include "gba.h"
+#include "minilzo.107/minilzo.h"
 
 //#define HEAPBASE 0x2030000
 //#define HEAPSIZE 0x?
 
+extern u32 hflags;	//from cart.s
+extern u32 joycfg;	//from io.s
 extern u32 font;
 extern u32 fontpal;
 extern u32 AGBinput;	//from ppu.s
        u32 oldinput;
 
 //asm calls
-void loadcart(void *romaddr,int flags);
+void loadcart(int,int);	//from cart.s
 void run(int);
 void ppu_init(void);
-s32 (*emul8)(int) = (s32 (*)(int))run;
 
 void rommenu(void);
-void *findrom(int);
 int drawmenu(void);
 int getinput(void);
+int ines(u8 *p);
+void splash(void);
+void waitframe(void);
 
 /*
 void *__rt_embeddedalloc_init(void *base, unsigned int size);
@@ -29,18 +33,24 @@ void *__rt_heapdescriptor(void) {
 }*/
 
 const unsigned __fp_status_arm=0x40070000;
-int roms;//# of roms
+int roms;//total # of roms (# of menu titles found)
 char *textstart;//where rom descriptions reside (initialized by boot.s)
-u8 *romstart;//1st rom ptr
+u8 *firstrom;//1st rom ptr
 
 void C_entry() {
 	char *str,*str2;
 
+	REG_DISPCNT=FORCE_BLANK;	//screen OFF
+
 	//heapdescriptor=__rt_embeddedalloc_init((void*)HEAPBASE,HEAPSIZE);
 
-	//load font+palette
-	memcpy((void*)0x6002400,&font,16*8*32);
-	memcpy((void*)0x5000080,&fontpal,64);
+	lzo_init();	//init compression lib for savestates
+
+	//"#!" in menu indicates a splash screen is present
+	if(*(textstart+76800)=='#' && *(textstart+76801)=='!') {
+		splash();
+		textstart+=76800;
+	}
 
 	ppu_init();
 
@@ -48,22 +58,66 @@ void C_entry() {
 	roms=0;
 	while(*textstart<' ') textstart++;//kill stray CRs
 	str2=str=textstart;
-	while(*str!=0x4e || *(str+1)!=0x45 || *(str+2)!=0x53 || *(str+3)!=0x1a) { //iNES header
+	while(!ines((u8*)str)) { //look for first NES header
 		str=strchr(str,'\n');
 		while(*str<' ') str++;
 		if(*str2!='#')
 			roms++;
 		str2=str;
 	}
-	romstart=(u8*)str;
+	firstrom=(u8*)str;
+
+	//load font+palette
+	memcpy((void*)0x6002400,&font,16*8*32);
+	memcpy((void*)0x5000080,&fontpal,64);
+
 	rommenu();
+}
+
+//show splash screen
+void splash() {
+	u16 *src;
+	u16 *dst;
+	int i;
+
+	src=(u16*)textstart;	//this *SHOULD* be halfword aligned..
+	dst=MEM_VRAM;
+	for(i=0;i<38400;i++) {
+		*dst=*src;
+		src++;
+		dst++;
+	}
+	waitframe();
+	REG_BG2CNT=0x0000;
+	REG_BLDMOD=0x84;	//(brightness increase)
+	REG_DISPCNT=BG2_EN|MODE3;
+	for(i=16;i>=0;i--) {	//fade from white
+		REG_COLY=i;
+		waitframe();
+	}
+	for(i=0;i<120;i++) {	//wait 2 seconds
+		waitframe();
+	}
+	REG_BLDMOD=0xc4;	//(brightness decrease)
+	for(i=0;i<16;i++) {
+		REG_COLY=i;	//fade to black
+		waitframe();
+	}
+	*MEM_PALETTE=0;//black background (avoids blue flash when doing multiboot)
+}
+
+void waitframe(void) {
+#ifndef __DEBUGBUILD
+	while(REG_VCOUNT>=160) {};
+	while(REG_VCOUNT<160) {};
+#endif
 }
 
 void cls(void) {
 	int i;
 	u32 *scr=(u32*)SCREENBASE;
 	for(i=0;i<0x200;i++)
-		scr[i]=0x01000100;
+		scr[i]=0x01200120;
 	REG_BG2VOFS=0;
 }
 
@@ -74,8 +128,11 @@ void rommenu(void) {
 
 	oldinput=AGBinput=~REG_P1;
 	cls();
+	waitframe();
+	REG_BLDMOD=0;
 	REG_BG2CNT=0x0700;	//16color 256x256 CHRbase0 SCRbase7 Priority0
 	REG_DISPCNT=BG2_EN|OBJ_1D; //mode0, 1d sprites, main screen turn on
+        joycfg&=0x7fffffff;       //switch back to 1P
 	do {
 		key=getinput();
 		if(key&UP)
@@ -84,18 +141,21 @@ void rommenu(void) {
 			selectedrom=(selectedrom+1)%roms;
 		}
 		if(lastselected!=selectedrom) {
-			i=drawmenu();
-			loadcart(findrom(selectedrom),i);
+			if(roms)
+				i=drawmenu();
+			else
+				i=hflags;
+			loadcart(selectedrom,i);
 			lastselected=selectedrom;
 		}
-		(*emul8)(0);
+		run(0);
 	} while(roms>1 && !(key&(A_BTN+B_BTN+START)));
 	cls();	//leave BG2 on for debug output
 	while(AGBinput&(A_BTN+B_BTN+START)) {
 		AGBinput=0;
-		(*emul8)(0);
+		run(0);
 	}
-	(*emul8)(1);
+	run(1);
 }
 
 //advance str to next rom title
@@ -108,28 +168,56 @@ void nexttitle(char **str) {
 	*str=s;
 }
 
-//return ptr to Nth ROM
-void *findrom(int n) {
+//check for iNES ID
+int ines(u8 *p) {
+	return (*p==0x4e && *(p+1)==0x45 && *(p+2)==0x53 && *(p+3)==0x1a);
+}
+
+//return ptr to Nth ROM (including NES header)
+u8 *findrom(int n) {
 	u32 prgsize,chrsize;
-	u8 *p=romstart;
+	u8 *p=firstrom;
 	while(n--) {
 		prgsize=*(p+4);
 		chrsize=*(p+5);
 		p=p+16+prgsize*16384+chrsize*8192;
-		if(*p!=0x4e||*(p+1)!=0x45||*(p+2)!=0x53||*(p+3)!=0x1a)
-			return romstart;
+		if(!ines(p))
+			p+=128;
+		if(!ines(p))
+			return firstrom;
 	}
 	return p;
 }
 
-void drawtitle(int row,char *str,int hilite) {
+//return ptr to rom title
+char *findname(int i) {
+	char *s=textstart;
+	if(i>roms-1)
+		return "?";
+	if(*s=='#') i++;//need this if first line is a comment
+	while(i--)
+		nexttitle(&s);
+	return s;
+}
+
+//parse rom info string.  copy title into dst, return rom options
+int readtitle(char *src,char *dst) {
+	int hackflags,spritenum,saveslot;
+	hackflags=spritenum=saveslot=0;
+	sscanf(src,"%29[^|\n]%*[^|\n]|%i|%i|%i\n",dst,&hackflags,&spritenum,&saveslot);
+	hackflags&=~(NOSCALING+SCALESPRITES);		//keep old scaling options..
+	hackflags|=hflags&(NOSCALING+SCALESPRITES);
+	return hackflags|(spritenum<<8)|(saveslot<<24);
+}
+
+void drawtext(int row,char *str,int hilite) {
 	u16 *here=SCREENBASE+row*32;
 	int i=0;
 
 	*here=hilite?0x412a:0x4120;
 	hilite=(hilite<<12)+0x4100;
 	here++;
-	while(str[i]) {
+	while(str[i]>=' ') {
 		here[i]=str[i]|hilite;
 		i++;
 	}
@@ -137,17 +225,9 @@ void drawtitle(int row,char *str,int hilite) {
 		here[i]=0x0120;
 }
 
-char *getline(int i) {
-	char *s=textstart;
-	if(*s=='#') i++;//need this if first line is a comment
-	while(i--)
-		nexttitle(&s);
-	return s;
-}
-
 //returns options for selected rom
 int drawmenu() {
-	int i,j,topline,toprow,hackflags,allflags,saveslot,spritenum;
+	int i,j,topline,toprow,romflags,tmpflags;
 	char *s;
 	char title[30];
 
@@ -159,20 +239,19 @@ int drawmenu() {
 		toprow=0;
 		j=roms;
 	}
-	s=getline(toprow);
+	s=findname(toprow);
 	for(i=0;i<j;i++) {
-		hackflags=spritenum=saveslot=0;
-		sscanf(s,"%29[^|\n]%*[^|\n]|%i|%i|%i\n",title,&hackflags,&spritenum,&saveslot);
+		tmpflags=readtitle(s,title);
 		nexttitle(&s);
-		drawtitle(i,title,i==(selectedrom-toprow)?1:0);
+		drawtext(i,title,i==(selectedrom-toprow)?1:0);
 		if(i==selectedrom-toprow)
-			allflags=hackflags|(spritenum<<8)|(saveslot<<24);
+			romflags=tmpflags;
 	}
 	if(roms>20)
 		REG_BG2VOFS=topline%8;
 	else
 		REG_BG2VOFS=176+roms*4;
-	return allflags;
+	return romflags;
 }
 
 int getinput() {

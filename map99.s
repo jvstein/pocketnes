@@ -13,14 +13,14 @@ mapper99init
 	DCD empty_W,empty_W,empty_W,empty_W
 
 	ldrb r0,cartflags
-	orr r0,r0,#VS		;just to be safe..
+	orr r0,r0,#VS
 	strb r0,cartflags
 
 	adr r0,write4016
 	ldr r1,=joypad_write_ptr
 	str r0,[r1]
 
-	b mirror4_
+	mov pc,lr
 ;----------------------------------------------------------------------------
 write4016
 ;----------------------------------------------------------------------------

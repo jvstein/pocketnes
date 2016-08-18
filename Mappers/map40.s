@@ -53,19 +53,17 @@ mapper_40_hook
 ;----------------------------------------------------------------------------
 	ldrb r0,irqen
 	cmp r0,#0
-	beq hk0
+	beq_long default_scanlinehook
 
 	ldr r0,countdown
-;	bmi hk0
+;	bmi default_scanlinehook
 	subs r0,r0,#1
 	str r0,countdown
-	bcs hk0
+	bcs_long default_scanlinehook
 
 	mov r0,#0
 	strb r0,irqen
 ;	b irq6502
 	b_long CheckI
-hk0
-	fetch 0
 ;----------------------------------------------------------------------------
 	END

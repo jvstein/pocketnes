@@ -1,3 +1,6 @@
+#include "includes.h"
+
+/*
 #include <stdio.h>
 #include <string.h>
 #include "gba.h"
@@ -7,44 +10,70 @@
 #include "main.h"
 #include "ui.h"
 #include "sram.h"
+*/
 
 extern romheader mb_header;
 
 //const unsigned __fp_status_arm=0x40070000;
 u8 *textstart;//points to first NES rom (initialized by boot.s)
-int roms;//total number of roms
-int selectedrom=0;
+u8 *ewram_start;
+u8 *end_of_exram;
 u32 max_multiboot_size;
 u32 oldinput;
 
 char pogoshell_romname[32];	//keep track of rom name (for state saving, etc)
+#if RTCSUPPORT
 char rtc=0;
+#endif
 char pogoshell=0;
 char gameboyplayer=0;
 char gbaversion;
 int ne=0x454e;
 
+#if SAVE
 extern u8* BUFFER1;
 extern u8* BUFFER2;
 extern u8* BUFFER3;
+#endif
 
 void C_entry() {
 	int i;
+	u32 temp;
+	
+#if RTCSUPPORT
 	vu16 *timeregs=(u16*)0x080000c8;
-	u32 temp=(u32)(*(u8**)0x0203FBFC);
-	pogoshell=((temp & 0xFE000000) == 0x08000000)?1:0;
 	*timeregs=1;
 	if(*timeregs & 1) rtc=1;
+#endif
+	
+#if !GCC
+	ewram_start = (u8*)	&Image$$RO$$Limit;
+	if (ewram_start>=(u8*)0x08000000)
+	{
+		ewram_start=(u8*)0x02000000;
+	}
+#endif
+	end_of_exram = (u8*)&END_OF_EXRAM;
+	
+	temp=(u32)(*(u8**)0x0203FBFC);
+	pogoshell=((temp & 0xFE000000) == 0x08000000)?1:0;
 	gbaversion=CheckGBAVersion();
 	vblankfptr=&vbldummy;
 	memset((u32*)0x6000000,0,0x18000);  //clear vram (fixes graphics junk)
-	PPU_init();
 
-	BUFFER1 = ((u8*)(&Image$$RO$$Limit));
-	if (BUFFER1>=(u8*)0x08000000) BUFFER1=(u8*)0x02000000;
+	ui_x=0x100;
+	move_ui();
+//	REG_BG2HOFS=0x0100;		//Screen left
+	REG_BG2CNT=0x4600;	//16color 512x256 CHRbase0 SCRbase6 Priority0
+
+	PPU_init();
+	PPU_reset();
+
+#if SAVE
+	BUFFER1 = ewram_start;
 	BUFFER2 = BUFFER1+0x10000;
 	BUFFER3 = BUFFER2+0x20000;
-
+#endif
 
 	if(pogoshell){
 		u32 *magptr=(u32*)0x08000000;
@@ -78,14 +107,16 @@ void C_entry() {
 		}
 //		pogosize=magptr[8];							//file size
 		if(strstr(d,"(E)") || strstr(d,"(e)"))		//Check if it's a European rom.
-			g_emuflags |= PALTIMING;
+			emuflags |= PALTIMING;
 		else
-			g_emuflags &= ~PALTIMING;
+			emuflags &= ~PALTIMING;
 
 		roms=1;
 		textstart=(*(u8**)0x0203FBFC)-sizeof(romheader);
 		memcpy(pogoshell_romname,d,32);
+#if MULTIBOOT
 		memcpy(mb_header.name,d,32);
+#endif
 	}
 	else
 	{
@@ -107,6 +138,10 @@ void C_entry() {
 		if(!i)i=1;					//Stop PocketNES from crashing if there are no ROMs
 		roms=i;
 	}
+//	REG_WININ=0xFFFF;
+//	REG_WINOUT=0xFFFB;
+//	REG_WIN0H=0xFF;
+//	REG_WIN0V=0xFF;
 
 	if(REG_DISPCNT==FORCE_BLANK)	//is screen OFF?
 		REG_DISPCNT=0;				//screen ON
@@ -119,12 +154,20 @@ void C_entry() {
 	*MEM_PALETTE=0;					//black background (avoids blue flash when doing multiboot)
 	REG_DISPCNT=0;					//screen ON, MODE0
 	vblankfptr=&vblankinterrupt;
-	lzo_init();	//init compression lib for savestates
-
+	#if SAVE
+		lzo_init();	//init compression lib for savestates
+	#endif
+	
 	//load font+palette
-	LZ77UnCompVram(&font,(u16*)0x6002400);
-	memcpy((void*)0x5000080,&fontpal,64);
-	readconfig();
+	loadfont();
+	loadfontpal();
+//	LZ77UnCompVram(&font,(u16*)0x6002400);
+//	memcpy((void*)0x5000080,&fontpal,64);
+	
+	
+	#if SAVE
+		readconfig();
+	#endif
 	rommenu();
 }
 
@@ -135,7 +178,9 @@ void splash() {
 	REG_DISPCNT=FORCE_BLANK;	//screen OFF
 	memcpy((u16*)MEM_VRAM,(u16*)textstart,240*160*2);
 	waitframe();
-	REG_BG2CNT=0x0000;
+	ui_x=0;
+	move_ui();
+//	REG_BG2CNT=0x0000;
 	REG_DISPCNT=BG2_EN|MODE3;
 	for(i=16;i>=0;i--) {	//fade from white
 		setbrightnessall(i);
@@ -149,189 +194,4 @@ void splash() {
 		}
 	}
 }
-
-void rommenu(void) {
-	cls(3);
-	REG_BG2HOFS=0x0100;		//Screen left
-	REG_BG2CNT=0x4600;	//16color 512x256 CHRbase0 SCRbase6 Priority0
-	setdarknessgs(16);
-	if (!backup_nes_sram(0))
-	{
-		ui();
-		backup_nes_sram(0);
-	}
-	resetSIO((joycfg&~0xff000000) + 0x20000000);//back to 1P
-
-	if(pogoshell)
-	{
-		loadcart(0,g_emuflags&0x304);		//Also save country
-		get_saved_sram();
-	}
-	else
-	{
-		int i,lastselected=-1;
-		int key;
-
-		int romz=roms;	//globals=bigger code :P
-		int sel=selectedrom;
-
-		oldinput=AGBinput=~REG_P1;
-    
-		if(romz>1){
-			i=drawmenu(sel);
-			loadcart(sel,i|(g_emuflags&0x300));  //(keep old gfxmode)
-			get_saved_sram();
-			lastselected=sel;
-			for(i=0;i<8;i++)
-			{
-				waitframe();
-				REG_BG2HOFS=224-i*32;	//Move screen right
-			}
-			setdarknessgs(7);			//Lighten screen
-		}
-		do {
-			key=getinput();
-			if(key&RIGHT) {
-				sel+=10;
-				if(sel>romz-1) sel=romz-1;
-			}
-			if(key&LEFT) {
-				sel-=10;
-				if(sel<0) sel=0;
-			}
-			if(key&UP)
-				sel=sel+romz-1;
-			if(key&DOWN)
-				sel++;
-			selectedrom=sel%=romz;
-			if(lastselected!=sel) {
-				i=drawmenu(sel);
-				loadcart(sel,i|(g_emuflags&0x300));  //(keep old gfxmode)
-				get_saved_sram();
-				lastselected=sel;
-			}
-			run(0);
-		} while(romz>1 && !(key&(A_BTN+B_BTN+START)));
-		for(i=1;i<9;i++)
-		{
-			setdarknessgs(8-i);		//Lighten screen
-			REG_BG2HOFS=i*32;		//Move screen left
-			run(0);
-		}
-		cls(3);	//leave BG2 on for debug output
-		while(AGBinput&(A_BTN+B_BTN+START)) {
-			AGBinput=0;
-			run(0);
-		}
-	}
-	if(autostate&1)quickload();
-#if CHEATFINDER
-	cheatload();
-#endif
-	run(1);
-}
-
-//return ptr to Nth ROM (including rominfo struct)
-u8 *findrom(int n) {
-	u8 *p=textstart;
-	while(!pogoshell && n--)
-	{
-		p+=*(u32*)(p+32)+sizeof(romheader);
-	}
-	return p;
-}
-
-//returns options for selected rom
-int drawmenu(int sel) {
-	int i,j,topline,toprow,romflags=0;
-	u8 *p;
-	romheader *ri;
-
-	if(roms>20) {
-		topline=8*(roms-20)*sel/(roms-1);
-		toprow=topline/8;
-		j=(toprow<roms-20)?21:20;
-	} else {
-		toprow=0;
-		j=roms;
-	}
-	p=findrom(toprow);
-	for(i=0;i<j;i++) {
-		if(roms>1)drawtext(i,(char*)p,i==(sel-toprow)?1:0);
-		if(i==sel-toprow) {
-			ri=(romheader*)p;
-			romflags=(*ri).flags|(*ri).spritefollow<<16;
-		}
-		p+=*(u32*)(p+32)+48;
-	}
-	if(roms>20)
-	{
-		REG_BG2VOFS=topline%8;
-	}
-	else
-	{
-		REG_BG2VOFS=176+roms*4;
-	}
-	return romflags;
-}
-
-int getinput() {
-	static int lastdpad,repeatcount=0;
-	int dpad;
-	int keyhit=(oldinput^AGBinput)&AGBinput;
-	oldinput=AGBinput;
-
-	dpad=AGBinput&(UP+DOWN+LEFT+RIGHT);
-	if(lastdpad==dpad) {
-		repeatcount++;
-		if(repeatcount<25 || repeatcount&3)	//delay/repeat
-			dpad=0;
-	} else {
-		repeatcount=0;
-		lastdpad=dpad;
-	}
-	EMUinput=0;	//disable game input
-	return dpad|(keyhit&(A_BTN+B_BTN+START));
-}
-
-
-void cls(int chrmap)
-{
-	int i=0,len=0x200;
-	u32 *scr=(u32*)SCREENBASE;
-	if(chrmap>=2)
-		len=0x400;
-	if(chrmap==2)
-		i=0x200;
-	for(;i<len;i++)				//512x256
-		scr[i]=0x01200120;
-	REG_BG2VOFS=0;
-}
-
-void drawtext(int row,char *str,int hilite) {
-	u16 *here=SCREENBASE+row*32;
-	int i=0;
-
-	*here=hilite?0x412a:0x4120;
-	hilite=(hilite<<12)+0x4100;
-	here++;
-	while(str[i]>=' ') {
-		here[i]=str[i]|hilite;
-		i++;
-	}
-	for(;i<31;i++)
-		here[i]=0x0120;
-}
-
-void setdarknessgs(int dark) {
-	REG_BLDCNT=0x01f1;				//darken game screen
-	REG_BLDY=dark;					//Darken screen
-	REG_BLDALPHA=(0x10-dark)<<8;	//set blending for OBJ affected BG0
-}
-
-void setbrightnessall(int light) {
-	REG_BLDCNT=0x00bf;				//brightness increase all
-	REG_BLDY=light;
-}
-
 

@@ -41,6 +41,8 @@ mapper249init
 
 	ldr r0,=MMC3_IRQ_Hook
 	str r0,scanlinehook
+	ldr r0,=MMC3_IRQ_midline
+	str r0,midlinehook
 
 	ldrb r0,mapper_number
 	ldr r1,=commandlist
@@ -55,6 +57,14 @@ mapper249init
 	cmpeq r3,#0
 	ldreq r2,=write0_245
 	
+	[ LESSMAPPERS
+	ldr r3,=cmd6
+	str r3,[r1,#6*4]
+	str r3,[r1,#6*4+32]
+	ldr r3,=mapAB_
+	str r3,[r1,#7*4]
+	str r3,[r1,#7*4+32]
+	|
 	cmp r0,#249
 	ldreq r3,=write4
 	ldreq r0,=empty_io_w_hook
@@ -69,6 +79,7 @@ mapper249init
 	ldreq r3,=cmd7_249
 	str r3,[r1,#7*4]
 	str r3,[r1,#7*4+32]
+	]
 	
 	str r2,writemem_tbl+16
 null
@@ -82,7 +93,7 @@ write0_245_even
 	strb r0,cmd
 	eor addy,r0,r1
 	tst addy,#0x40
-	bne romswitch
+	bne romswitch_245
 	mov pc,lr
 w8001_245
 	and r1,r1,#7
@@ -92,6 +103,8 @@ w8001_245
 commandlist_245 DCD cmd0_245,null,null,null,null,null,cmd6_245,cmd7_245
 ;----------------------------------------------------------------------------
 
+	[ LESSMAPPERS
+	|
 write0_249
 	tst addy,#1
 	beq_long write0_even
@@ -102,6 +115,7 @@ write0_249
 	blne unscramble1
 	mov lr,addy
 	b_long w8001
+	]
 
 ;----------------------------------------------------------------------------
 	AREA wram_code3, CODE, READWRITE
@@ -123,11 +137,11 @@ write0_even
 	str r2,nes_chr_map
 	str r1,nes_chr_map+4
 	stmfd sp!,{r3-r7,lr}
-	ldr lr,=vram_map
+	adr lr,vram_map
 	ldmia lr,{r0-r7}
 	stmia lr!,{r4-r7}
 	stmia lr,{r0-r3}
-	bl updateBGCHR_
+	bl_long updateBGCHR_
 	ldmfd sp!,{r3-r7,lr}
 wr0
 	tst addy,#0x40
@@ -173,33 +187,36 @@ w8001_118_noalttest
 	
 	tst r0,#0x80
 	stmfd sp!,{lr}
-	bl mirror1_
+	bl_long mirror1_
 	ldmfd sp!,{lr}
 	b w8001
 
 cmd0			;0000-07ff
 	mov r0,r0,lsr#1
-	b chr01_
+	b_long chr01_
 cmd1			;0800-0fff
 	mov r0,r0,lsr#1
-	b chr23_
+	b_long chr23_
 cmd0x			;1000-17ff
 	mov r0,r0,lsr#1
-	b chr45_
+	b_long chr45_
 cmd1x			;1800-1fff
 	mov r0,r0,lsr#1
-	b chr67_
+	b_long chr67_
+	[ LESSMAPPERS
+	|
 cmd7_249
 	mov r0,r2
 	mov addy,lr
 	bl_long unscramble3
 	mov lr,addy
-	b mapAB_
+	b_long mapAB_
 cmd6_249
 	mov r0,r2
 	mov addy,lr
 	bl_long unscramble3
 	mov lr,addy
+	]
 cmd6			;$8000/$C000 select
 	strb r0,bank0
 romswitch
@@ -209,63 +226,15 @@ romswitch
 	tst r1,#0x40
 	bne rs0
 
-	bl mapCD_
+	bl_long mapCD_
 	ldrb r0,bank0
 	mov lr,addy
-	b map89_
+	b_long map89_
 rs0
-	bl map89_
+	bl_long map89_
 	ldrb r0,bank0
 	mov lr,addy
-	b mapCD_
-
-cmd0_245
-	tst r0,#2
-	moveq r1,#0
-	movne r1,#1
-	strb r1,bankadd
-	b romswitch_245
-cmd7_245
-	strb r0,bank1
-	b romswitch_245
-cmd6_245			;$8000/$C000 select
-	strb r0,bank0
-romswitch_245
-	mov addy,lr
-	mov r0,#63
-	ldrb r1,bankadd
-	orr r0,r0,r1,lsl#6
-	bl mapEF_
-
-	ldrb r0,bank1
-	ldrb r1,bankadd
-	orr r0,r0,r1,lsl#6
-	bl mapAB_
-
-	mov r0,#62
-	ldrb r1,bankadd
-	orr r0,r0,r1,lsl#6
-
-	ldrb r1,cmd
-	tst r1,#0x40
-	bne rs0_245
-
-	bl mapCD_
-	ldrb r0,bank0
-	ldrb r1,bankadd
-	orr r0,r0,r1,lsl#6
-
-	mov lr,addy
-	b map89_
-rs0_245
-	bl map89_
-	ldrb r0,bank0
-	ldrb r1,bankadd
-	orr r0,r0,r1,lsl#6
-
-	mov lr,addy
-	b mapCD_
-
+	b_long mapCD_
 
 ;----------------------------------------------------------------------------
 write1		;$A000-A001
@@ -273,7 +242,7 @@ write1		;$A000-A001
 	tst addy,#1
 	movne pc,lr
 	tst r0,#1
-	b mirror2V_
+	b_long mirror2V_
 ;----------------------------------------------------------------------------
 write2		;C000-C001
 ;----------------------------------------------------------------------------
@@ -291,31 +260,166 @@ write3		;E000-E001
 
 
 ;----------------------------------------------------------------------------
-MMC3_IRQ_Hook
+MMC3_IRQ_midline
 ;----------------------------------------------------------------------------
-	ldrb r0,ppuctrl1
-	tst r0,#0x18		;no sprite/BG enable?  0x18
-	beq hk0			;bye..
-
+	
+	;first check if we're inside the vblank period  (maybe optimize this out?)
 	ldr r0,scanline
-	cmp r0,#240		;not rendering?
-	bhi hk0			;bye..
+	cmp r0,#240
+	bgt default_midlinehook
 
+	;If both sprites and BG disabled, no change in address
+	ldrb r0,ppuctrl1
+	tst r0,#0x18
+	beq default_midlinehook
+
+	ldrb r1,countdown
+	cmp r1,#1
+	beq_long MMC3_finer_check
+mmc3_irq_check1
+	;check for rising edge:
+	ldrb r0,ppuctrl0
+	;BG must come from left pattern table, must be 8x16 sprites, or 8x8 sprites from right table
+	tst r0,#0x10
+	bne default_midlinehook
+	tst r0,#0x28
+	beq default_midlinehook
+	
+	ldr lr,=default_midlinehook
+;	b MMC3_countdown
+MMC3_countdown
+	ldr r0,scanline
+	ldrb r1,midscanline
+
+	;now do the countdown
 	ldrb r0,countdown
 	subs r0,r0,#1
 	ldrmib r0,latch
 	strb r0,countdown
-	bne hk0
+	bxne lr
 
 	ldrb r1,irqen
 	cmp r1,#0
 	bne CheckI
-hk0
-	fetch 0
+	bx lr
 
+;----------------------------------------------------------------------------
+MMC3_IRQ_Hook
+;----------------------------------------------------------------------------
+	;If inside vblank, no change in address
+	ldr r0,scanline
+	cmp r0,#240
+	bgt pcm_scanlinehook
+	ldr lr,=pcm_scanlinehook
+mmc3_irq_check2
+	;If both sprites and BG disabled, no change in address
+	ldrb r0,ppuctrl1
+	tst r0,#0x18
+	bxeq lr
+	;check for rising edge:
+	ldrb r0,ppuctrl0
+	;BG must come from right pattern table, must NOT be 8x16 sprites, or 8x8 sprites from right table
+	tst r0,#0x10
+	bxeq lr
+	tst r0,#0x28
+	bxne lr
+	
+	b MMC3_countdown
+
+	AREA rom_code3, CODE, READONLY
+;ntsc:
+;4, 68, 85
+;pal:
+;4, 64, 80
+
+
+MMC3_finer_check
+	ldr r0,cyclesperscanline2
+	sub cycles,cycles,r0
+	adds cycles,cycles,#4*CYCLE
+	bmi MMC3_finer_timeout
+	ldr r0,=MMC3_finer_timeout
+	str r0,nexttimeout
+	b_long default_midlinehook
+MMC3_finer_timeout
+	add cycles,cycles,#(324-260)*CYCLE
+	ldr r0,emuflags
+	tst r0,#PALTIMING
+	subne cycles,cycles,#4*CYCLE
+
+	
+	
+	ldr r0,=MMC3_finer_timeout2
+	str r0,nexttimeout
+	b_long mmc3_irq_check1
+MMC3_finer_timeout2
+	add cycles,cycles,#(341-324)*CYCLE
+	ldr r0,emuflags
+	tst r0,#PALTIMING
+	subne cycles,cycles,#1*CYCLE
+
+	ldr r0,=MMC3_dummy_IRQ_Hook
+	str r0,scanlinehook
+	ldr r0,line_end_timeout
+	str r0,nexttimeout
+	ldr lr,=default_scanlinehook
+	b_long mmc3_irq_check2
+MMC3_dummy_IRQ_Hook	
+	ldr r0,=MMC3_IRQ_Hook
+	str r0,scanlinehook
+	b_long pcm_scanlinehook
 
 	AREA rom_code2, CODE, READONLY
 
+cmd0_245
+	tst r0,#2
+	moveq r1,#0
+	movne r1,#1
+	strb r1,bankadd
+	b romswitch_245
+cmd7_245
+	strb r0,bank1
+	b romswitch_245
+cmd6_245			;$8000/$C000 select
+	strb r0,bank0
+romswitch_245
+	mov addy,lr
+	mov r0,#63
+	ldrb r1,bankadd
+	orr r0,r0,r1,lsl#6
+	bl_long mapEF_
+
+	ldrb r0,bank1
+	ldrb r1,bankadd
+	orr r0,r0,r1,lsl#6
+	bl_long mapAB_
+
+	mov r0,#62
+	ldrb r1,bankadd
+	orr r0,r0,r1,lsl#6
+
+	ldrb r1,cmd
+	tst r1,#0x40
+	bne rs0_245
+
+	bl_long mapCD_
+	ldrb r0,bank0
+	ldrb r1,bankadd
+	orr r0,r0,r1,lsl#6
+
+	mov lr,addy
+	b_long map89_
+rs0_245
+	bl_long map89_
+	ldrb r0,bank0
+	ldrb r1,bankadd
+	orr r0,r0,r1,lsl#6
+
+	mov lr,addy
+	b_long mapCD_
+
+	[ LESSMAPPERS
+	|
 ;this stuff is for mapper 249, which scrambles the bank numbers
 ;----------------------------------------------------------------------------
 write4		;5000
@@ -361,5 +465,5 @@ unscramble3
 	blt unscramble2
 	sub r0,r0,#0x20
 	b unscramble1
-
+	]
 	END

@@ -1,6 +1,10 @@
+	INCLUDE equates.h
+
+	[ LESSMAPPERS
+	|
+
 	AREA rom_code, CODE, READONLY
 
-	INCLUDE equates.h
 	INCLUDE memory.h
 	INCLUDE cart.h
 	INCLUDE 6502.h
@@ -387,4 +391,7 @@ h1
 	strb r2,mmc5irqr
 	fetch 0
 ;-------------------------------------------------------
+
+	]
+	
 	END

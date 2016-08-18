@@ -1,8 +1,14 @@
 	INCLUDE equates.h
 	INCLUDE ppu.h
 
-	IMPORT |wram_globals0$$Base|
+	IMPORT GLOBAL_PTR_BASE
 
+	EXPORT _freqtbl
+	EXPORT _pcmstart
+	EXPORT _pcmcurrentaddr 
+	
+	EXPORT sound_state
+	
 	EXPORT timer1interrupt
 	EXPORT Sound_reset
 	EXPORT updatesound
@@ -29,6 +35,8 @@
 	EXPORT _4015r
 	EXPORT _4017w
 	EXPORT _pcmctrl
+		
+	EXPORT PCMWAV
 
 pcmirqbakup EQU mapperdata+24
 pcmirqcount EQU mapperdata+28
@@ -122,7 +130,7 @@ pcm_mix
 Sound_reset_core
 ;----------------------------------------------------------------------------
 	stmfd sp!,{r4-r8,globalptr,lr}
-	ldr globalptr,=|wram_globals0$$Base|
+	ldr globalptr,=GLOBAL_PTR_BASE
 	
 	mov r1,#REG_BASE
 
@@ -131,11 +139,11 @@ Sound_reset_core
 	orr r0,r0,#0x8000			;PWM 7-bit 131.072kHz
 	strh r0,[r1,#REG_SGBIAS]
 
-	ldr r0,=0xb00a0077			;stop all channels, output ratio=full range.  use directsound B, timer 0
-	str r0,[r1,#REG_SGCNT_L]
-
 	mov r0,#0x80
 	strh r0,[r1,#REG_SGCNT_X]	;sound master enable
+
+	ldr r0,=0xb00a0077			;stop all channels, output ratio=full range.  use directsound B, timer 0
+	str r0,[r1,#REG_SGCNT_L]
 
 	mov r0,#0x08
 	strh r0,[r1,#REG_SG1CNT_L]	;square0 sweep off
@@ -186,7 +194,7 @@ make_freq_table_core
 	tst r0,#PALTIMING
 	ldreq r2,=2400				;0x10000000/111860 NTSC
 	ldrne r2,=2583				;0x10000000/103912 PAL
-	ldr r12,=FREQTBL
+	ldr r12,freqtbl
 	mov r3,#4096
 	mov r1,#2048
 frqloop
@@ -218,7 +226,7 @@ PCMLIMIT	EQU 96<<24
 	;update DMA buffer for PCM
 
 	stmfd sp!,{r4-r8,globalptr,lr}
-	ldr globalptr,=|wram_globals0$$Base|
+	ldr globalptr,=GLOBAL_PTR_BASE
 	
 	ldr r3,pcmcount			;r3=bytes remaining
 	ldr r12,=PCMWAV			;r12=dma buffer
@@ -315,7 +323,7 @@ _4002w
 	ldr r0,sq0freq
 sq0setfreq			;updatesound jumps here
 	mov r0,r0,lsl#1
-	ldr r1,=FREQTBL
+	ldr r1,freqtbl
 	ldrh r0,[r1,r0]		;freq lookup
 
 	str r0,saveSG11
@@ -337,7 +345,7 @@ _4003w
 	strb r0,sq0freq+1
 	ldr r0,sq0freq
 	mov r0,r0,lsl#1
-	ldr r1,=FREQTBL
+	ldr r1,freqtbl
 	ldrh r0,[r1,r0]		;freq lookup
 
 	str r0,saveSG11
@@ -391,7 +399,7 @@ _4006w
 	ldr r0,sq1freq
 sq1setfreq			;updatesound jumps here
 	mov r0,r0,lsl#1
-	ldr r1,=FREQTBL
+	ldr r1,freqtbl
 	ldrh r0,[r1,r0]		;freq lookup
 
 	str r0,saveSG21
@@ -413,7 +421,7 @@ _4007w
 	strb r0,sq1freq+1
 	ldr r0,sq1freq
 	mov r0,r0,lsl#1
-	ldr r1,=FREQTBL
+	ldr r1,freqtbl
 	ldrh r0,[r1,r0]		;freq lookup
 
 	str r0,saveSG21
@@ -448,7 +456,7 @@ _400aw
 	strb r0,trifreq
 	ldr r0,trifreq
 	mov r0,r0,lsl#1
-	ldr r1,=FREQTBL
+	ldr r1,freqtbl
 	ldrh r0,[r1,r0]		;freq lookup
 
 	mov r2,#REG_BASE
@@ -466,7 +474,7 @@ _400bw
 	strb r0,trifreq+1
 	ldr r0,trifreq
 	mov r0,r0,lsl#1
-	ldr r1,=FREQTBL
+	ldr r1,freqtbl
 	ldrh r0,[r1,r0]		;freq lookup
 
 	mov r2,#REG_BASE
@@ -724,7 +732,7 @@ updatesound	;called from line 0..  r0-r9 are free to use
 ;----------------------------------------------------------------------------
 	mov r9,lr
 	mov addy,#REG_BASE
-	ldr globalptr,=|wram_globals0$$Base|
+	ldr globalptr,=GLOBAL_PTR_BASE
 
 	ldr r4,soundctrl	;process all timers:
 	ldrh r2,[addy,#REG_SGCNT_L]
@@ -896,10 +904,19 @@ Sound_reset
 	b_long Sound_reset_core
 make_freq_table
 	stmfd sp!,{r4-r8,globalptr,lr}
-	ldr globalptr,=|wram_globals0$$Base|
+	ldr globalptr,=GLOBAL_PTR_BASE
 	b_long make_freq_table_core
 
 	AREA wram_globals3, CODE, READWRITE
+sound_state
+
+g_apu4017
+	DCB 0 ;apu_4017
+	DCB 0 ;doframeriq
+	
+	DCB 0
+	DCB 0
+
 _sq0freq	DCD 0
 _saveSG11 DCD 0
 _sq0timeout DCD 0
@@ -923,12 +940,14 @@ _saveSG41 DCD 0
 _pcmctrl DCD 0		;bit7=irqen, bit6=loop.  bit 12=PCM enable (from $4015). bits 8-15=old $4015
 _pcmlength DCD 0		;total bytes
 _pcmcount DCD 0		;bytes remaining
-_pcmstart DCD 0		;starting addr
-_pcmcurrentaddr DCD 0	;current addr
 _pcmlevel DCD 0
-_freqtbl DCD 0
 _soundmask DCD 0		;mask for SGCNT_L
 _soundctrl DCD 0		;1st control reg for ch1-4
 
+;internal pointers not in sound_state
+
+_pcmstart DCD 0		;starting addr
+_pcmcurrentaddr DCD 0	;current addr
+_freqtbl DCD 0
 
 	END

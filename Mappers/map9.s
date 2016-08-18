@@ -35,7 +35,7 @@ mapper10init
 	DCD empty_W,a000_10,c000,e000
 	b_long map10start
 ;----------------------------------------------------------------------------
-	AREA wram_code3, CODE, READWRITE
+;	AREA wram_code7, CODE, READWRITE
 ;----------------------------------------------------------------------------
 ;------------------------------
 a000_10
@@ -72,12 +72,13 @@ f000 ;-------------------------
 mapper_9_hook
 ;------------------------------
 	ldr r0,scanline
+	sub r0,r0,#1
 	tst r0,#7
 	ble h9
 	cmp r0,#239
 	bhi h9
 
-	adr r2,latchtbl
+	ldr r2,=latchtbl
 	ldrb r0,[r2,r0,lsr#3]
 
 	cmp r0,#0xfd
@@ -92,12 +93,13 @@ mapper9BGcheck ;called from PPU.s, r0=FD-FF
 	cmp r0,#0xff
 	moveq pc,lr
 
-	adr r1,latchtbl
+	ldr r1,=latchtbl
 	and r2,addy,#0x3f
 	cmp r2,#0x10
 	strlob r0,[r1,addy,lsr#6]
 
 	mov pc,lr
+	AREA wram_code99, CODE, READWRITE
 
 latchtbl % 32
 ;----------------------------------------------------------------------------

@@ -3,58 +3,248 @@
 		GBLL CHEATFINDER
 		GBLL MOVIEPLAYER
 		GBLL VERSION_IN_ROM
+		GBLL SAVE32
+		GBLL DIRTYTILES
+		GBLL SPRITESCAN
+		GBLL RTCSUPPORT
+		GBLL CARTSAVE
+		GBLL MIXED_VRAM_VROM
+		GBLL LESSMAPPERS
+		GBLL APACK
+		GBLL VISOLY
+		GBLL USE_BG_CACHE
+		GBLL RESET_ALL
+		GBLL LINK
+		GBLL SAVESTATES
+		
+		GBLL HAPPY_CPU_TESTER
+HAPPY_CPU_TESTER SETL {FALSE}
 
+	[ VERSION = "COMPY"
+LINK SETL {FALSE}
+RESET_ALL SETL {FALSE}
+USE_BG_CACHE SETL {FALSE}
+SAVE SETL {FALSE}
+RTCSUPPORT SETL {FALSE}
+DEBUG		SETL {FALSE}
+CHEATFINDER	SETL {FALSE}
+MOVIEPLAYER	SETL {FALSE}
+VERSION_IN_ROM	SETL {FALSE}
+SAVE32 SETL {FALSE}
+DIRTYTILES SETL {FALSE}
+SPRITESCAN SETL {FALSE}
+MIXED_VRAM_VROM SETL {FALSE}
+LESSMAPPERS SETL {TRUE}
+APACK	SETL	{TRUE}
+VISOLY SETL {FALSE}
+  |
+  [ VERSION = "GBAMP"
+LINK SETL {TRUE}
+RESET_ALL SETL {TRUE}
+USE_BG_CACHE SETL {TRUE}
+CARTSAVE SETL {FALSE}
+RTCSUPPORT SETL {FALSE}
+DEBUG		SETL {FALSE}
+CHEATFINDER	SETL {FALSE}
+MOVIEPLAYER	SETL {TRUE}
+VERSION_IN_ROM	SETL {TRUE}
+SAVE32 SETL {FALSE}
+DIRTYTILES SETL {TRUE}
+SPRITESCAN SETL {TRUE}
+MIXED_VRAM_VROM SETL {TRUE}
+LESSMAPPERS SETL {FALSE}
+APACK	SETL	{FALSE}
+VISOLY SETL {FALSE}
+  |
+LINK SETL {TRUE}
+RESET_ALL SETL {TRUE}
+USE_BG_CACHE SETL {TRUE}
+CARTSAVE SETL {TRUE}
+RTCSUPPORT SETL {TRUE}
 DEBUG		SETL {FALSE}
 CHEATFINDER	SETL {TRUE}
 MOVIEPLAYER	SETL {FALSE}
-VERSION_IN_ROM	SETL {FALSE}
+VERSION_IN_ROM	SETL {TRUE}
+DIRTYTILES SETL {TRUE}
+SPRITESCAN SETL {TRUE}
+MIXED_VRAM_VROM SETL {TRUE}
+LESSMAPPERS SETL {FALSE}
+APACK	SETL	{TRUE}
+  [ NOCASH
+SAVE32 SETL {TRUE}
+VISOLY SETL {FALSE}
+  |
+SAVE32 SETL {FALSE}
+VISOLY SETL {TRUE}
+  ]
+
+  ]
+  ]
+
+	[ CARTSAVE
+SAVESTATES SETL {TRUE}
+	]
+	[ MOVIEPLAYER
+SAVESTATES SETL {TRUE}
+	]
+
+SPR_CACHE_START EQU 8
+SPR_CACHE_OFFSET EQU SPR_CACHE_START*2048
+	[ USE_BG_CACHE
+BG_CACHE_SIZE EQU 512
+	]
+
+	[ DIRTYTILES
+MAX_RECENT_TILES EQU 20  ;Battletoads updates up to 20 tiles per frame
+	]
+
 
 ;BUILD		SETS "DEBUG"/"GBA"	(defined at cmdline)
 ;----------------------------------------------------------------------------
 
-NES_RAM			EQU 0x3004800		;keep $400 byte aligned for 6502 stack shit
-NES_SRAM		EQU NES_RAM+0x0800	;IMPORTANT!! NES_SRAM in GBA.H points here.  keep it current if you fuck with this
-CHR_DECODE		EQU NES_SRAM+0x2000
-OAM_BUFFER1		EQU CHR_DECODE+0x400
-OAM_BUFFER2		EQU OAM_BUFFER1+0x200
-OAM_BUFFER3		EQU OAM_BUFFER2+0x200
-YSCALE_EXTRA	EQU OAM_BUFFER3+0x200
+	INCLUDE macro.h
+
+	GBLL IWRAM_GROWDOWN
+IWRAM_GROWDOWN SETL {FALSE}
+
+ [ {FALSE}
+
+NES_RAM			EQU 0x3005000		;800	;keep $400 byte aligned for 6502 stack shit
+NES_SRAM		EQU NES_RAM+0x0800	;2000
+CHR_DECODE		EQU NES_SRAM+0x2000	;400
+
+ [ IWRAM_GROWDOWN
+END_OF_IWRAM	EQU CHR_DECODE+0x400
+
+YSCALE_LOOKUP	EQU NES_RAM-0x108
+YSCALE_EXTRA	EQU YSCALE_LOOKUP-0x50
+
+START_OF_IWRAM	EQU YSCALE_EXTRA
+ |
+YSCALE_EXTRA	EQU CHR_DECODE+0x400
 YSCALE_LOOKUP	EQU YSCALE_EXTRA+0x50
+END_OF_IWRAM	EQU YSCALE_LOOKUP+0x108
+START_OF_IWRAM	EQU NES_RAM
+ ]
+;stack has 48 bytes of breathing room left!
+ ]
+
+	[ VERSION="COMPY"
 PCMWAVSIZE		EQU 128
-PCMWAV			EQU YSCALE_LOOKUP+0x100
-MAPPED_RGB 	EQU PCMWAV+PCMWAVSIZE   ;size = 192
+;PCMWAV			EQU YSCALE_EXTRA-PCMWAVSIZE
+PCMWAV			EQU NES_RAM-PCMWAVSIZE
+MAPPED_RGB		EQU PCMWAV-0xC0
+	]
+;YSCALE_EXTRA	EQU CHR_DECODE+0x400	;50
+;YSCALE_LOOKUP	EQU YSCALE_EXTRA+0x50	;108
+;PCMWAVSIZE		EQU 128
+;PCMWAV			EQU YSCALE_LOOKUP+0x100	;80
+;MAPPED_RGB 	EQU PCMWAV+PCMWAVSIZE   	;C0
 
 ;06002020 - $03E0  ;184 (B8) remaining
 ;06006000 - $2000  ;328 (148) remaining
 ;0600A000 - $2000  ;free
 ;06014000 - $4000  ;4608 (1200) remaining, free if no cheatfinder used
+SCROLLBUFF1		EQU 0x6002400-240*4
 
-NES_VRAM		EQU 0x2040000-0x3000
-END_OF_EXRAM	EQU NES_VRAM+8192	;!How much data is left for Multiboot to work!
+DMA0BUFF		EQU 0x06003800-164*4  ;;48 remaining  ;scaled SCROLLBUFF, scrolling
+DMA3BUFF		EQU 0x06004000-164*2	;scaled BG0CNTBUFF, mirroring, bg bank selection
+DMA1BUFF		EQU DMA3BUFF-164*2    ;;112 remaining	;scaled DISPCNTBUFF, bg&sprite on/off
 
-FREQTBL			EQU 0x6008000-0x1000
-SPEEDHACK_FIND_BEQ_BUF EQU FREQTBL - 128
-SPEEDHACK_FIND_BNE_BUF EQU SPEEDHACK_FIND_BEQ_BUF - 128 ;0203BF80
-SPEEDHACK_FIND_BPL_BUF EQU SPEEDHACK_FIND_BNE_BUF - 128
-BG0CNTBUFF		EQU SPEEDHACK_FIND_BPL_BUF-240*2
-DMA3BUFF		EQU BG0CNTBUFF-164*2
-SCROLLBUFF1		EQU DMA3BUFF-240*4
-SCROLLBUFF2		EQU SCROLLBUFF1-240*4
-DMA0BUFF		EQU SCROLLBUFF2-164*4  ;;40 remaining
+SPEEDHACK_FIND_BEQ_BUF		EQU 0x06006800-128
+SPEEDHACK_FIND_BNE_BUF		EQU 0x06007000-128
 
-CHEATFINDER_VALUES EQU 0x6018000-10240
-CHEATFINDER_BITS EQU CHEATFINDER_VALUES-1280  ;2624 (A40) remaining
-CHEATFINDER_CHEATS EQU CHEATFINDER_BITS-900 ;must be multiple of 3 and 2 (4?)
+	GBLA	NEXT
 
-DISPCNTBUFF		EQU 0x6002400-240*2
-DMA1BUFF		EQU DISPCNTBUFF-164*2
+MEM_END	EQU 0x02040000
+NESOAMBUFF2 EQU MEM_END-256
+NESOAMBUFF1 EQU NESOAMBUFF2-256
+
+NEXT SETA NESOAMBUFF1
+
+	[ DIRTYTILES
+RECENT_TILES1	EQU NEXT-(MAX_RECENT_TILES*16)
+RECENT_TILES2	EQU RECENT_TILES1-(MAX_RECENT_TILES*16)
+
+NEXT SETA RECENT_TILES2
+	]
+
+	[ USE_BG_CACHE
+BG_CACHE	EQU NEXT-BG_CACHE_SIZE
+
+NEXT SETA BG_CACHE
+	]
+
+SPEEDHACK_FIND_JMP_BUF	EQU	NEXT-128
+;SPEEDHACK_FIND_BEQ_BUF	;already defined
+;SPEEDHACK_FIND_BNE_BUF	;already defined
+SPEEDHACK_FIND_BCS_BUF	EQU	SPEEDHACK_FIND_JMP_BUF-128
+SPEEDHACK_FIND_BCC_BUF	EQU	SPEEDHACK_FIND_BCS_BUF-128
+SPEEDHACK_FIND_BVS_BUF	EQU	SPEEDHACK_FIND_BCC_BUF-128
+SPEEDHACK_FIND_BVC_BUF	EQU	SPEEDHACK_FIND_BVS_BUF-128
+SPEEDHACK_FIND_BMI_BUF	EQU	SPEEDHACK_FIND_BVC_BUF-128
+SPEEDHACK_FIND_BPL_BUF	EQU	SPEEDHACK_FIND_BMI_BUF-128
+
+BG0CNTBUFF1	EQU SPEEDHACK_FIND_BPL_BUF-240*2
+BG0CNTBUFF2	EQU BG0CNTBUFF1-240*2
+DISPCNTBUFF1	EQU BG0CNTBUFF2-240*2
+DISPCNTBUFF2	EQU DISPCNTBUFF1-240*2
+;SCROLLBUFF1	;already defined
+SCROLLBUFF2		EQU DISPCNTBUFF2-240*4
+;DMA3BUFF	;already defined
+;DMA1BUFF	;already defined
+;DMA0BUFF	;already defined
+
+BANKBUFFER1  EQU SCROLLBUFF2-30*8
+BANKBUFFER2  EQU BANKBUFFER1-30*8
+
+;chr_rom_table EQU BANKBUFFER2-1024
+spr_cache_map EQU BANKBUFFER2-256
+spr_cache_disp	EQU spr_cache_map-16
+spr_cache	EQU spr_cache_disp-16
+
+NEXT SETA spr_cache
+
+	[ DIRTYTILES
+RECENT_TILENUM1	EQU NEXT-(MAX_RECENT_TILES+2)*2
+RECENT_TILENUM2	EQU RECENT_TILENUM1-(MAX_RECENT_TILES+2)*2
+dirty_rows  EQU RECENT_TILENUM2-32
+dirty_tiles EQU dirty_rows -516
+
+NEXT SETA dirty_tiles
+
+	]
+
+	[ VERSION <> "COMPY"
+PCMWAVSIZE		EQU 128
+PCMWAV			EQU NEXT-PCMWAVSIZE
+MAPPED_RGB		EQU PCMWAV-0xC0
+NEXT SETA MAPPED_RGB
+	]
+
+	[ CARTSAVE
+CachedConfig	EQU NEXT-48
+NEXT SETA CachedConfig
+	]
+
+NES_VRAM2   EQU NEXT-2048
+NES_VRAM	EQU NES_VRAM2-0x2000
+NES_VRAM4   EQU NES_VRAM-2048
+FREQTBL2			EQU NES_VRAM4-0x1000
+END_OF_EXRAM	EQU FREQTBL2	;!How much data is left for Multiboot to work!
+
+MULTIBOOT_LIMIT EQU END_OF_EXRAM
+
+;CHEATFINDER_VALUES EQU 0x6014000-10240
+;CHEATFINDER_BITS EQU CHEATFINDER_VALUES-1280  ;2624 (A40) remaining
+;CHEATFINDER_CHEATS EQU CHEATFINDER_BITS-900 ;must be multiple of 3 and 2 (4?)
 
 AGB_IRQVECT		EQU 0x3007FFC
 AGB_PALETTE		EQU 0x5000000
 AGB_VRAM		EQU 0x6000000
 AGB_OAM			EQU 0x7000000
 AGB_SRAM		EQU 0xE000000
-AGB_BG			EQU AGB_VRAM+0xe000
+AGB_BG			EQU AGB_VRAM+0x6000
 DEBUGSCREEN		EQU AGB_VRAM+0x3800
 
 REG_BASE		EQU 0x4000000
@@ -148,17 +338,14 @@ addy		RN r12 ;keep this at r12 (scratch for APCS)
 		;r13=SP
 		;r14=LR
 		;r15=PC
+zero_byte	RN r5
+
 ;----------------------------------------------------------------------------
 
  MAP 0,cpu_zpage
 nes_ram # 0x800
 nes_sram # 0x2000
-chr_decode # 0x400
-oam_buffer1 # 0x200
-oam_buffer2 # 0x200
-oam_buffer3 # 0x200
-yscale_extra # 0x50	;(240-160) extra 80 is for scrolling unscaled sprites
-yscale_lookup # 0x100	;sprite Y LUT
+;chr_decode # 0x400
 
 ;everything in wram_globals* areas:
 
@@ -167,21 +354,33 @@ opz # 256*4
 readmem_tbl # 8*4
 writemem_tbl # 8*4
 memmap_tbl # 8*4
+;###begin cpustate
 cpuregs # 7*4
 m6502_s # 4
+;###end cpustate
+frame # 4
+scanline # 4
 lastbank # 4
 nexttimeout # 4
-scanline # 4
+line_end_timeout # 4
+line_mid_timeout # 4
 scanlinehook # 4
-frame # 4
-cyclesperscanline # 4
+midlinehook # 4
+cyclesperscanline1 # 4
+cyclesperscanline2 # 4
 lastscanline # 4
+
+midscanline # 1
+_dontstop # 1
+hackflags3 # 1
+ppuctrl1_startframe # 1
+
 			;ppu.s (wram_globals1)
 fpsvalue # 4
 AGBjoypad # 4
 NESjoypad # 4
-adjustblend # 4
-windowtop # 16
+
+;###begin ppustate
 vramaddr # 4
 vramaddr2 # 4
 scrollX # 4
@@ -197,13 +396,61 @@ ppuctrl0 # 1
 ppuctrl0frame # 1
 ppuctrl1 # 1
 ppuoamadr # 1
+nextx # 4
+;###end ppustate
+
+scrollXold # 4
+scrollXline # 4
+scrollYold # 4
+scrollYline # 4
+ppuhack_line # 4
+ppuhack_count # 1
+PAL60 # 1
+novblankwait_ # 1
+windowtop # 1
+
+adjustblend # 1
+has_run_nes_chr_update_this_frame # 1
+has_vram # 1
+bankable_vrom # 1
+
+vram_page_mask # 1
+vram_page_base # 1
+windowtop_scaled6_8 # 1 
+windowtop_scaled7_8 # 1
+
+	[ DIRTYTILES
+recent_tiles # 4
+dmarecent_tiles # 4
+recent_tilenum # 4
+dmarecent_tilenum	# 4
+	]
+
+	[ USE_BG_CACHE
+bg_cache_cursor # 4
+bg_cache_base # 4
+bg_cache_limit # 4
+bg_cache_full # 1
+bg_cache_updateok # 1
+	;warning!  Missing '# 2' inside here  Maybe move the next two lines if you need to
+	]
+
+twitch # 1
+flicker # 1
+
 			;cart.s (wram_globals2)
+;###begin mapperstate
 mapperdata # 32
+ # 3
+bank6 # 1
+bank8 # 1
+bankA # 1
+bankC # 1
+bankE # 1
 nes_chr_map # 8
-old_chr_map # 8
-new_chr_map # 8
+;###end mapperstate
 agb_bg_map # 16
-agb_obj_map # 8
+agb_real_bg_map # 16
 bg_recent # 4
 
 rombase # 4
@@ -215,6 +462,9 @@ rommask # 4
 vrombase # 4
 vrommask # 4
 
+instant_prg_banks # 4
+instant_chr_banks # 4
+
 cartflags # 1
 hackflags # 1
 hackflags2 # 1
@@ -222,14 +472,19 @@ mapper_number # 1
 
 rompages # 1
 vrompages # 1
-apu_4017 # 1
-doframeirq # 1
+fourscreen # 1
+ # 1
 
-;;pcmirqbakup # 4
-;;pcmirqcount # 4
+chrold # 4
+chrline # 4
 
 ; # 0 ;align
-	;sound.s (wram_globals2)
+
+	;sound.s (wram_globals3)
+
+apu_4017 # 1
+doframeirq # 1
+ # 2
 
 sq0freq	# 4
 saveSG11 # 4
@@ -254,13 +509,74 @@ saveSG41 # 4
 pcmctrl # 4		;bit7=irqen, bit6=loop.  bit 12=PCM enable (from $4015). bits 8-15=old $4015
 pcmlength # 4		;total bytes
 pcmcount # 4		;bytes remaining
-pcmstart # 4		;starting addr
-pcmcurrentaddr # 4	;current addr
 pcmlevel # 4
-freqtbl # 4
 soundmask # 4		;mask for SGCNT_L
 soundctrl # 4		;1st control reg for ch1-4
 
+pcmstart # 4		;starting addr
+pcmcurrentaddr # 4	;current addr
+freqtbl # 4
+
+
+	;io.s (wram_globals4)
+sending # 4
+lastsent # 4
+received0 # 4
+received1 # 4
+received2 # 4
+received3 # 4
+
+joycfg # 4
+joy0state # 1
+joy1state # 1
+joy2state # 1
+joy3state # 1
+joy0serial # 4
+joy1serial # 4
+nrplayers # 4
+
+	;ppu.s (wram_globals5)
+
+nesoamdirty # 1
+consumetiles_ok # 1
+frameready # 1
+firstframeready	# 1
+
+vram_write_tbl # 16*4
+vram_map # 8*4
+nes_nt0 # 4
+nes_nt1 # 4
+nes_nt2 # 4
+nes_nt3 # 4
+ # 4*4
+;agb_nt_map # 4
+;agb_nt0 # 4
+;agb_nt1 # 4
+;agb_nt2 # 4
+;agb_nt3 # 4
+
+agb_pal		# 32*2
+nes_palette	# 32
+
+scrollbuff		# 4
+dmascrollbuff	# 4
+nesoambuff		# 4
+dmanesoambuff	# 4
+bg0cntbuff		# 4
+dmabg0cntbuff	# 4
+dispcntbuff		# 4
+dmadispcntbuff	# 4
+
+bankbuffer_last # 4*2
+bankbuffer		# 4
+dmabankbuffer	# 4
+bankbuffer_line	# 4
+
+ctrl1old	# 4
+ctrl1line	# 4
+
+stat_r_simple_func # 4
+nextnesoambuff # 4
 
 ;----------------------------------------------------------------------------
 IRQ_VECTOR		EQU 0xfffe ; IRQ/BRK interrupt vector address
@@ -311,228 +627,5 @@ CYC_V			EQU 0x40	;Overflow bit
 CYC_MASK		EQU CYCLE-1	;Mask
 ;----------------------------------------------------------------------------
 YSTART			EQU 16 ;scaled NES screen starts on this line
-
- [ VERSION_IN_ROM
-	MACRO
-	bl_long $label
-	mov lr,pc
-	ldr pc,=$label
-	MEND
-
-	MACRO
-	bleq_long $label
-	moveq lr,pc
-	ldreq pc,=$label
-	MEND
-
-	MACRO
-	bllo_long $label
-	movlo lr,pc
-	ldrlo pc,=$label
-	MEND
-
-	MACRO
-	blhi_long $label
-	movhi lr,pc
-	ldrhi pc,=$label
-	MEND
-
-	MACRO
-	bllt_long $label
-	movlt lr,pc
-	ldrlt pc,=$label
-	MEND
-
-	MACRO
-	blgt_long $label
-	movgt lr,pc
-	ldrgt pc,=$label
-	MEND
-
-	MACRO
-	blne_long $label
-	movne lr,pc
-	ldrne pc,=$label
-	MEND
-
-	MACRO
-	blcc_long $label
-	movcc lr,pc
-	ldrcc pc,=$label
-	MEND
-
-	MACRO
-	blpl_long $label
-	movpl lr,pc
-	ldrpl pc,=$label
-	MEND
-
-	MACRO
-	b_long $label
-	ldr pc,=$label
-	MEND
-
-	MACRO
-	bcc_long $label
-	ldrcc pc,=$label
-	MEND
-
-	MACRO
-	bhs_long $label
-	ldrhs pc,=$label
-	MEND
-
-	MACRO
-	beq_long $label
-	ldreq pc,=$label
-	MEND
-
-	MACRO
-	bne_long $label
-	ldrne pc,=$label
-	MEND
-
-	MACRO
-	blo_long $label
-	ldrlo pc,=$label
-	MEND
-
-	MACRO
-	bhi_long $label
-	ldrhi pc,=$label
-	MEND
-
-	MACRO
-	bgt_long $label
-	ldrgt pc,=$label
-	MEND
-
-	MACRO
-	blt_long $label
-	ldrlt pc,=$label
-	MEND
-
-	MACRO
-	bcs_long $label
-	ldrcs pc,=$label
-	MEND
-
-	MACRO
-	bmi_long $label
-	ldrmi pc,=$label
-	MEND
-
-	MACRO
-	bpl_long $label
-	ldrpl pc,=$label
-	MEND
-
-	|
-
-	MACRO
-	bl_long $label
-	bl $label
-	MEND
-
-	MACRO
-	bleq_long $label
-	bleq $label
-	MEND
-
-	MACRO
-	bllo_long $label
-	bllo $label
-	MEND
-
-	MACRO
-	blhi_long $label
-	blhi $label
-	MEND
-
-	MACRO
-	bllt_long $label
-	bllt $label
-	MEND
-
-	MACRO
-	blgt_long $label
-	blgt $label
-	MEND
-
-	MACRO
-	blne_long $label
-	blne $label
-	MEND
-
-	MACRO
-	blcc_long $label
-	blcc $label
-	MEND
-
-	MACRO
-	blpl_long $label
-	blpl $label
-	MEND
-
-	MACRO
-	b_long $label
-	b $label
-	MEND
-
-	MACRO
-	bcc_long $label
-	bcc $label
-	MEND
-
-	MACRO
-	bhs_long $label
-	bhs $label
-	MEND
-
-	MACRO
-	beq_long $label
-	beq $label
-	MEND
-
-	MACRO
-	bne_long $label
-	bne $label
-	MEND
-
-	MACRO
-	blo_long $label
-	blo $label
-	MEND
-
-	MACRO
-	bhi_long $label
-	bhi $label
-	MEND
-
-	MACRO
-	bgt_long $label
-	bgt $label
-	MEND
-
-	MACRO
-	blt_long $label
-	blt $label
-	MEND
-
-	MACRO
-	bcs_long $label
-	bcs $label
-	MEND
-
-	MACRO
-	bmi_long $label
-	bmi $label
-	MEND
-
-	MACRO
-	bpl_long $label
-	bpl $label
-	MEND
- ]
 
 		END

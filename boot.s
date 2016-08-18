@@ -21,6 +21,7 @@
 	EXPORT font
 	EXPORT fontpal
 ;------------------------------------------------------------
+head
  	b __main
 
 	DCB 36,255,174,81,105,154,162,33,61,132,130,10,132,228,9,173
@@ -73,7 +74,7 @@ __main
 		add r6,r6,#0x6000000		;textstart=8xxxxxx
 		add r5,r5,#0x6000000		;RW code ptr=8xxxxxx
 
-		ldr r1,=|Image$$RO$$Base|	;copy rom code to exram
+		ldr r1,=|Image$$RO$$Base|	;copy rom code to ewram
 		adr r0,headcopy				; XG2 resets when 0x08000000 is accessed.
 		add r3,r1,#192				; EZFA mess with the GBA header
 _5		cmp r1,r3
@@ -86,7 +87,7 @@ _2		cmp r1,r3
 		ldrcc r2, [r0], #4
 		strcc r2, [r1], #4
 		bcc _2
-		sub pc,lr,#0x6000000	;jump to exram copy
+		sub pc,lr,#0x6000000	;jump to ewram copy
  ]
 _3
 	LDR	r1, =|Image$$RW$$Base|
@@ -126,7 +127,7 @@ giveup	bhi giveup
 	ldr r4,=textstart	;textstart=ptr to NES rom info
 	str r6,[r4]
 
-	ldr r6,=(END_OF_EXRAM-0x2000000)	;how much free space is left?
+	ldr r6,=(MULTIBOOT_LIMIT-0x2000000)	;how much free space is left?
 	ldr r4,=max_multiboot_size
 	str r6,[r4]
 
@@ -143,6 +144,10 @@ giveup	bhi giveup
 	ldr r1,=C_entry
 	bx r1
 ;----------------------------------------------------------
+
+	[ VERSION = "COMPY"
+headcopy EQU head
+	|
 headcopy
 	DCD 0xEA00002E			;b main
 	DCB 36,255,174,81,105,154,162,33,61,132,130,10,132,228,9,173
@@ -165,6 +170,7 @@ headcopy
 	DCB 0			;version
 	DCB 0x3c		;complement check
 	DCW 0			;unused
+	]
 
 font
 	INCBIN font.lz77

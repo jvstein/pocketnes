@@ -1,4 +1,7 @@
-	IMPORT loadcart
+	IMPORT im_lazy
+
+	IMPORT loadcart_asm
+	IMPORT hardreset
 	IMPORT vrom_req
 	IMPORT map67_
 	IMPORT map89_
@@ -25,7 +28,7 @@
 	IMPORT chr01234567_
 	IMPORT writeCHRTBL
 	IMPORT updateBGCHR_
-	IMPORT updateOBJCHR
+;	IMPORT updateOBJCHR
 	IMPORT mirror1_
 	IMPORT mirror2H_
 	IMPORT mirror2V_

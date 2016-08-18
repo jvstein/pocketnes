@@ -21,7 +21,7 @@ mapper64init
 ;----------------------------------------------------------------------------
 	DCD write0,write1,write2,write3
 
-	adr r0,RAMBO_IRQ_Hook
+	ldr r0,=RAMBO_IRQ_Hook
 	str r0,scanlinehook
 
 	mov pc,lr
@@ -86,31 +86,32 @@ write3		;E000-E001
 	and r0,addy,#1
 	strb r0,irqen
 	mov pc,lr
+
+	AREA wram_code7, CODE, READWRITE
+
 ;----------------------------------------------------------------------------
 RAMBO_IRQ_Hook
 ;----------------------------------------------------------------------------
 ;	ldrb r0,ppuctrl1
 ;	tst r0,#0x18		;no sprite/BG enable?  0x18
-;	beq hk0			;bye..
+;	beq default_scanlinehook			;bye..
 
 	ldr r0,scanline
 	cmp r0,#240		;not rendering?
-	bhi hk0			;bye..
+	bhi default_scanlinehook			;bye..
 
 	ldrb r0,countdown
 	subs r0,r0,#1
 	ldrmib r0,latch
 	strb r0,countdown
-	bne hk0
+	bne default_scanlinehook
 
 	ldrb r1,irqen
 	cmp r1,#0
-	beq hk0
+	beq default_scanlinehook
 
 ;	mov r1,#0
 ;	strb r1,irqen
 ;	b irq6502
-	b_long CheckI
-hk0
-	fetch 0
+	b CheckI
 	END

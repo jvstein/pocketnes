@@ -3,7 +3,17 @@ del main.s
 del ui.s
 del mbclient.s
 del sram.s
+del cache.s
 del gbamp_cf.s
 del gba_nds_fat.s
 del minilzo.s
+del savestate.s
+del loadcart.s
+del speedhack.s
+del spritecache.s
+del cheat.s
 del gbabin\*.o
+del compy\*.o
+del nocash\*.o
+del rommenu.s
+del pocketnes_text.s

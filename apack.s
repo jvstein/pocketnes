@@ -1,8 +1,20 @@
+	INCLUDE equates.h
+
+	[ APACK
+
 ;APlib ARM7 decompressor by Dan Weiss, based on the original C version
 ;Takes in raw apacked data, NOT data created by the 'safe' compressor.
 
+ AREA rom_codeX, CODE, READONLY
 
- AREA wram_code5, CODE, READWRITE
+src RN r0
+dest RN r1
+byte RN r2
+mask RN r3
+gamma RN r4
+lwm RN r6
+recentoff RN r7
+temp RN r8
 
  EXPORT depack
 
@@ -14,15 +26,6 @@
 ;r6 = lwm
 ;r7 = recentoff
 ;r8 = lr copy/scratch
-
-src RN r0
-dest RN r1
-byte RN r2
-mask RN r3
-gamma RN r4
-lwm RN r6
-recentoff RN r7
-temp RN r8
 
 	MACRO ;3 instructions
 	GETBIT
@@ -38,9 +41,15 @@ temp RN r8
 	addne gamma,gamma,#1
 	MEND
 
+depack
+	stmfd sp!,{r4-r10,lr}
+	ldrb temp,[src],#1
+	strb temp,[dest],#1
+	ldr mask,=0x01010101
+	b_long aploop_nolwm
 
 
-
+ AREA wram_code5, CODE, READWRITE
 
 ;;ap_getbit
 ;;	movs mask, mask, ror #1
@@ -49,8 +58,6 @@ temp RN r8
 ;;;getbit_continue
 ;;	tst byte,byte,mask
 ;;	bx lr
-
-
 
 ;;ap_getbitgamma
 ;;	movs gamma,gamma,lsl #1
@@ -62,22 +69,7 @@ temp RN r8
 ;;	addne gamma,gamma,#1
 ;;	bx lr
 
-ap_getgamma
-	mov gamma,#1
-ap_getgammaloop
-	GETBITGAMMA
-	GETBIT
-	bne ap_getgammaloop
-	bx lr
-
-done
-	ldmfd sp!,{r4-r10,lr}
-	bx lr
-depack
-	stmfd sp!,{r4-r10,lr}
-	ldrb temp,[src],#1
-	strb temp,[dest],#1
-	ldr mask,=0x01010101
+	;depack enters here
 aploop_nolwm
 	mov lwm,#0
 aploop
@@ -156,4 +148,17 @@ copyloop2
 	bne copyloop2
 	b aploop
 
+ap_getgamma
+	mov gamma,#1
+ap_getgammaloop
+	GETBITGAMMA
+	GETBIT
+	bne ap_getgammaloop
+	bx lr
+
+done
+	ldmfd sp!,{r4-r10,lr}
+	bx lr
+
+	]
  END

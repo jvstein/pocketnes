@@ -34,7 +34,6 @@ typedef struct {
 #define MEM_SRAM (u8*)0xE000000
 
 #define INTR_VECT *(u32*)0x3007FFC
-#define SCREENBASE (u16*)0x6003000
 
 #define REG_DISPCNT *(vu32*)0x4000000
 #define MODE0 0
@@ -64,22 +63,25 @@ typedef struct {
 #define H_IRQ 16
 #define VCOUNT_IRQ 32
 
-#define REG_BG0HOFS *(u16*)0x4000010
-#define REG_BG0VOFS *(u16*)0x4000012
-#define REG_BG1HOFS *(u16*)0x4000014
-#define REG_BG1VOFS *(u16*)0x4000016
-#define REG_BG2HOFS *(u16*)0x4000018
-#define REG_BG2VOFS *(u16*)0x400001a
-#define REG_BG3HOFS *(u16*)0x400001c
-#define REG_BG3VOFS *(u16*)0x400001e
-#define REG_BG0CNT *(u16*)0x4000008
-#define REG_BG1CNT *(u16*)0x400000a
-#define REG_BG2CNT *(u16*)0x400000c
-#define REG_BG3CNT *(u16*)0x400000e
-#define REG_WIN0H *(u16*)0x4000040
-#define REG_WIN0V *(u16*)0x4000044
-#define REG_WININ *(u16*)0x4000048
-#define REG_WINOUT *(u16*)0x400004A
+#define REG_BG0HOFS *(vu16*)0x4000010
+#define REG_BG0VOFS *(vu16*)0x4000012
+#define REG_BG1HOFS *(vu16*)0x4000014
+#define REG_BG1VOFS *(vu16*)0x4000016
+#define REG_BG2HOFS *(vu16*)0x4000018
+#define REG_BG2VOFS *(vu16*)0x400001a
+#define REG_BG3HOFS *(vu16*)0x400001c
+#define REG_BG3VOFS *(vu16*)0x400001e
+#define REG_BG0CNT  *(vu16*)0x4000008
+#define REG_BG1CNT  *(vu16*)0x400000a
+#define REG_BG2CNT  *(vu16*)0x400000c
+#define REG_BG3CNT  *(vu16*)0x400000e
+
+#define REG_WIN0H   *(vu16*)0x4000040
+#define REG_WIN1H   *(vu16*)0x4000042
+#define REG_WIN0V   *(vu16*)0x4000044
+#define REG_WIN1V   *(vu16*)0x4000046
+#define REG_WININ   *(vu16*)0x4000048
+#define REG_WINOUT  *(vu16*)0x400004A
 
 #define COLOR16 0x0000
 #define COLOR256 0x0080
@@ -134,7 +136,16 @@ typedef struct {
 #define REG_SIOCNT *(vu16*)0x4000128
 #define REG_SIOMLT_SEND *(vu16*)0x400012a
 #define REG_RCNT *(vu16*)0x4000134
-#define REG_TM0CNT *(vu16*)0x4000102
+
+#define REG_TM0CNT_L *(vu16*)0x4000100
+#define REG_TM0CNT_H *(vu16*)0x4000102
+#define REG_TM1CNT_L *(vu16*)0x4000104
+#define REG_TM1CNT_H *(vu16*)0x4000106
+#define REG_TM2CNT_L *(vu16*)0x4000108
+#define REG_TM2CNT_H *(vu16*)0x400010A
+#define REG_TM3CNT_L *(vu16*)0x400010C
+#define REG_TM3CNT_H *(vu16*)0x400010E
+
 #define REG_WRWAITCTL *(vu32*)0x04000800
 
 #endif

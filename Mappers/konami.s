@@ -55,7 +55,7 @@ KoIRQen ;- - - - - - - - - - - - - - -
 	strb r0,irqen
 	mov pc,lr
 ;-------------------------------------------------------
-	AREA wram_code3, CODE, READWRITE
+	AREA wram_code7, CODE, READWRITE
 Konami_IRQ_Hook
 ;------------------------------------------------------
 	ldr r0,latch

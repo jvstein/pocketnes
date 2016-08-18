@@ -1,6 +1,10 @@
+	INCLUDE equates.h
+
+	[ LESSMAPPERS
+	|
+
 	AREA rom_code, CODE, READONLY
 
-	INCLUDE equates.h
 	INCLUDE memory.h
 	INCLUDE ppu.h
 	INCLUDE cart.h
@@ -39,7 +43,7 @@ dip EQU 0xb			; DIPswitch, for playtime. 6min default.
 mapper105init
 ;----------------------------------------------------------------------------
 	DCD write0,write1,void,write3
-
+	
 	adr r0,mapper_105_hook
 	str r0,scanlinehook
 
@@ -164,20 +168,19 @@ mapper_105_hook
 
 	ldrb r1,reg1
 	tst r1,#0x10
-	bne hk0
+	bne_long default_scanlinehook
 
 	ldr r0,counter
 	add r0,r0,#113			; Cycles per scanline
 	str r0,counter
 	orr r0,r0,#dip<<25		; DIP switch
 	cmp r0,#0x3e000000
-	blo hk0
+	blo_long default_scanlinehook
 
 ;	mov r1,#0
 ;	str r1,counter
 ;	b irq6502
 	b_long CheckI
-hk0
-	fetch 0
 ;----------------------------------------------------------------------------
+	]
 	END

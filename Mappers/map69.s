@@ -9,28 +9,33 @@
 
 	EXPORT mapper69init
 	EXPORT mapper_69_hook
+	EXPORT mapper69_ntsc_pal_reset
 
 countdown EQU mapperdata+0
 irqen EQU mapperdata+4
 cmd EQU mapperdata+5
-video EQU mapperdata+6		; number of cycles per scanline
+video EQU mapperdata+8		; number of cycles per scanline
 ;----------------------------------------------------------------------------
 mapper69init			; Sunsoft FME-7, Batman ROTJ, Gimmick...
 ;----------------------------------------------------------------------------
 	DCD write0,write1,void,void			;There is a music channel also
 
 	mov r1,#-1
-	mov r1,r1,lsr#16
 	str r1,countdown
 
+	ldr r0,=mapper_69_hook
+	str r0,scanlinehook
+
+mapper69_ntsc_pal_reset
         ldr r1,emuflags
 	tst r1,#PALTIMING
-	movne r1,#107				;PAL
-	moveq r1,#113				;NTSC
-	strb r1,video
+	;341/320
+	
+	
+	ldrne r1,=0x6AAAAA	;PAL
+	ldreq r1,=0x71AAAA	;NTSC
+	str r1,video
 
-	adr r0,mapper_69_hook
-	str r0,scanlinehook
 
 	mov pc,lr
 ;----------------------------------------------------------------------------
@@ -53,10 +58,10 @@ irqen69
 	strb r0,irqen
 	mov pc,lr
 irqA69
-	strb r0,countdown
+	strb r0,countdown+2
 	mov pc,lr
 irqB69
-	strb r0,countdown+1
+	strb r0,countdown+3
 	mov pc,lr
 
 ;----------------------------------------------------------------------------
@@ -72,36 +77,34 @@ mapJinx
 	beq_long map67_
 	ldr r1,=NES_RAM-0x5800		;sram at $6000.
 	str r1,memmap_tbl+12
-	mov r1,#0
-	strb r1,mapperdata+23
-	
+	mov r0,#0xFF
+	strb r0,bank6
 	mov pc,lr
 
 ;----------------------------------------------------------------------------
+commandlist	DCD mapJinx,map89_,mapAB_,mapCD_,mirrorKonami_,irqen69,irqA69,irqB69
+;----------------------------------------------------------------------------
+	AREA wram_code7, CODE, READWRITE
+;----------------------------------------------------------------------------
 mapper_69_hook
 ;----------------------------------------------------------------------------
-
 	ldrb r1,irqen
 	cmp r1,#0
-	beq hk0
+	beq default_scanlinehook
 
 	ldr r0,countdown
-	ldrb r1,video			; Number of cycles per scanline.
+	ldr r1,video			; Number of cycles per scanline.
 	subs r0,r0,r1
 	str r0,countdown
-	bhi hk0
+	bhi default_scanlinehook
 
 	mov r1,#-1
-	mov r1,r1,lsr#16
 	str r1,countdown
 
 	mov r1,#0
 	strb r1,irqen
 ;	b irq6502
-	b_long CheckI
-hk0
-	fetch 0
-;----------------------------------------------------------------------------
-commandlist	DCD mapJinx,map89_,mapAB_,mapCD_,mirrorKonami_,irqen69,irqA69,irqB69
-;----------------------------------------------------------------------------
+	b CheckI
+
+
 	END

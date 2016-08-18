@@ -1,6 +1,7 @@
 	AREA wram_code0, CODE, READWRITE
 
 	INCLUDE equates.h
+	INCLUDE mem.h
 	INCLUDE 6502mac.h
 	INCLUDE cart.h
 	INCLUDE memory.h
@@ -8,11 +9,15 @@
 	INCLUDE ppu.h
 	INCLUDE sound.h
 
-	IMPORT |wram_globals0$$Base|
 	IMPORT ui	;ui.c
+	[ SAVESTATES
 	IMPORT quickload	;sram.c
 	IMPORT quicksave	;sram.c
+	]
 	IMPORT _pcmctrl
+
+	IMPORT quickhackfinder
+	IMPORT setjmp0hack
 
 	[ CHEATFINDER
 	IMPORT do_cheats
@@ -24,33 +29,40 @@
 	EXPORT run
 	EXPORT op_table
 	EXPORT default_scanlinehook
+	EXPORT default_midlinehook
 	EXPORT pcm_scanlinehook
 ;	EXPORT irq6502
 	EXPORT CheckI
-	EXPORT PAL60
 	EXPORT cpustate
 	EXPORT rommap
 	EXPORT frametotal
 	EXPORT sleeptime
-	EXPORT novblankwait
+;	EXPORT novblankwait
 	EXPORT dontstop
+	EXPORT GLOBAL_PTR_BASE
 
 	EXPORT SPEEDHACK_FIND_BPL_BUF
+	EXPORT SPEEDHACK_FIND_BMI_BUF
+	EXPORT SPEEDHACK_FIND_BVC_BUF
+	EXPORT SPEEDHACK_FIND_BVS_BUF
+	EXPORT SPEEDHACK_FIND_BCC_BUF
+	EXPORT SPEEDHACK_FIND_BCS_BUF
 	EXPORT SPEEDHACK_FIND_BNE_BUF
 	EXPORT SPEEDHACK_FIND_BEQ_BUF
-	
-	EXPORT CHEATFINDER_BITS
-	EXPORT CHEATFINDER_VALUES
-	EXPORT CHEATFINDER_CHEATS
+	EXPORT SPEEDHACK_FIND_JMP_BUF
+
 
 	EXPORT rommap
 	
 	EXPORT g_m6502_pc
 	EXPORT g_m6502_s
+	EXPORT g_scanline
 	EXPORT g_lastbank
 	
 	EXPORT g_memmap_tbl
 	EXPORT g_writemem_tbl
+	
+	EXPORT g_hackflags3
 
 pcmirqbakup EQU mapperdata+24
 pcmirqcount EQU mapperdata+28
@@ -138,13 +150,12 @@ _10
 _10y;   BPL *
 ;----------------------------------------------------------------------------
 	orr cycles,cycles,#BRANCH
-
 	tst m6502_nz,#0x80000000
 	bne nobranch
 	ldrsb r0,[m6502_pc],#1
 	add m6502_pc,m6502_pc,r0
 	cmp r0,#-4						;speed hack for SMB3.
-	andeq cycles,cycles,#CYC_MASK	;speed hack 
+	beq dobranchhack
 	fetch 3
 ;----------------------------------------------------------------------------
 _11;   ORA ($nn),Y
@@ -272,6 +283,17 @@ _30
 	subne cycles,cycles,#3*CYCLE
 	fetch 2
 ;----------------------------------------------------------------------------
+_30y;   BMI *
+;----------------------------------------------------------------------------
+	orr cycles,cycles,#BRANCH
+	tst m6502_nz,#0x80000000
+	beq nobranch
+	ldrsb r0,[m6502_pc],#1
+	addne m6502_pc,m6502_pc,r0
+	cmp r0,#-4
+	beq dobranchhack
+	fetch 3
+;----------------------------------------------------------------------------
 _31;   AND ($nn),Y
 ;----------------------------------------------------------------------------
 	doIIY
@@ -387,6 +409,17 @@ checkdeadloop 		;if thisjumpaddr=lastjumpaddr, cycles=0
 		b fini
 lastjump DCD 0
 ;----------------------------------------------------------------------------
+_4Cy;   JMP $nnnn
+;----------------------------------------------------------------------------
+	sub addy,m6502_pc,#1
+	ldrb r0,[m6502_pc],#1
+	ldrb r1,[m6502_pc]
+	orr m6502_pc,r0,r1,lsl#8
+	encodePC
+	subs r0,addy,m6502_pc
+	beq dobranchhackjmp
+	fetch 3
+;----------------------------------------------------------------------------
 _4D;   EOR $nnnn
 ;----------------------------------------------------------------------------
 	doABS
@@ -408,6 +441,17 @@ _50
 	addeq m6502_pc,m6502_pc,r0
 	subeq cycles,cycles,#3*CYCLE
 	fetch 2
+;----------------------------------------------------------------------------
+_50y;   BVC *
+;----------------------------------------------------------------------------
+	orr cycles,cycles,#BRANCH
+	tst cycles,#CYC_V
+	bne nobranch
+	ldrsb r0,[m6502_pc],#1
+	addeq m6502_pc,m6502_pc,r0
+	cmp r0,#-4
+	beq dobranchhack
+	fetch 3
 ;----------------------------------------------------------------------------
 _51;   EOR ($nn),Y
 ;----------------------------------------------------------------------------
@@ -505,7 +549,15 @@ _6C;   JMP ($nnnn)
 	and r2,addy,#0xE000
 	ldr r1,[r1,r2,lsr#11]
 	ldrb m6502_pc,[r1,addy]!
+	[ HAPPY_CPU_TESTER
+	;wrap fix to make CPU testers happy
+	mov r0,addy,lsl#24
+	adds r0,r0,#0x01000000
+	subcs r1,r1,#0x100
+	]
 	ldrb r0,[r1,#1]
+	
+	
 	orr m6502_pc,m6502_pc,r0,lsl#8
 	encodePC
 	fetch 5
@@ -531,6 +583,17 @@ _70
 	addne m6502_pc,m6502_pc,r0
 	subne cycles,cycles,#3*CYCLE
 	fetch 2
+;----------------------------------------------------------------------------
+_70y;   BVS *
+;----------------------------------------------------------------------------
+	orr cycles,cycles,#BRANCH
+	tst cycles,#CYC_V
+	beq nobranch
+	ldrsb r0,[m6502_pc],#1
+	addne m6502_pc,m6502_pc,r0
+	cmp r0,#-4
+	beq dobranchhack
+	fetch 3
 ;----------------------------------------------------------------------------
 _71;   ADC ($nn),Y
 ;----------------------------------------------------------------------------
@@ -636,6 +699,17 @@ _90
 	addeq m6502_pc,m6502_pc,r0
 	subeq cycles,cycles,#3*CYCLE
 	fetch 2
+;----------------------------------------------------------------------------
+_90y;   BCC *
+;----------------------------------------------------------------------------
+	orr cycles,cycles,#BRANCH
+	tst cycles,#CYC_C			;Test Carry
+	bne nobranch
+	ldrsb r0,[m6502_pc],#1
+	addeq m6502_pc,m6502_pc,r0
+	cmp r0,#-4
+	beq dobranchhack
+	fetch 3
 ;----------------------------------------------------------------------------
 _91;   STA ($nn),Y
 ;----------------------------------------------------------------------------
@@ -766,6 +840,17 @@ _B0
 	addne m6502_pc,m6502_pc,r0
 	subne cycles,cycles,#3*CYCLE
 	fetch 2
+;----------------------------------------------------------------------------
+_B0y;   BCS *
+;----------------------------------------------------------------------------
+	orr cycles,cycles,#BRANCH
+	tst cycles,#CYC_C			;Test Carry
+	beq nobranch
+	ldrsb r0,[m6502_pc],#1
+	addne m6502_pc,m6502_pc,r0
+	cmp r0,#-4
+	beq dobranchhack
+	fetch 3
 ;----------------------------------------------------------------------------
 _B1;   LDA ($nn),Y
 ;----------------------------------------------------------------------------
@@ -906,13 +991,12 @@ _D0
 _D0y;   BNE *
 ;----------------------------------------------------------------------------
 	orr cycles,cycles,#BRANCH
-
 	tst m6502_nz,#0xff
 	beq nobranch
 	ldrsb r0,[m6502_pc],#1
 	add m6502_pc,m6502_pc,r0
 	cmp r0,#-4						;speed hack for Dragon Warrior?.
-	andeq cycles,cycles,#CYC_MASK	;speed hack 
+	beq dobranchhackbne
 	fetch 3
 ;----------------------------------------------------------------------------
 _D1;   CMP ($nn),Y
@@ -1033,17 +1117,55 @@ _F0
 _F0y;   BEQ *
 ;----------------------------------------------------------------------------
 	orr cycles,cycles,#BRANCH
-
 	tst m6502_nz,#0xff
 	bne nobranch
 	ldrsb r0,[m6502_pc],#1
 	add m6502_pc,m6502_pc,r0
 	cmp r0,#-4						;speed hack for Ballon Fight.
-	andeq cycles,cycles,#CYC_MASK	;speed hack 
+	beq dobranchhack
 	fetch 3
 nobranch
 	add m6502_pc,m6502_pc,#1
 	fetch 2
+dobranchhackbne
+	cmp r0,#-3
+	bne dobranchhack
+	;look for DEX/DEY
+	ldrb r0,[m6502_pc]
+	cmp r0,#0xCA ;DEX
+	beq dobranchhack3_dex
+	cmp r0,#0x88 ;DEY
+	bne %f0
+dobranchhack3_dey
+	mov r0,m6502_y,lsr#24
+	mov m6502_y,#0
+	b %f1
+dobranchhack3_dex
+	mov r0,m6502_x,lsr#24
+	mov m6502_x,#0
+	;executes DEX, BNE -3 (branch taken) X-1 times
+	;executes DEX, BNE -3 (branch not taken) 1 time
+	;takes (5X-1) cycles*3
+1
+	mov r1,#5*3
+	mul r0,r1,r0
+	sub r0,r0,#1*3
+	sub cycles,cycles,r0,lsl#CYC_SHIFT
+	mov m6502_nz,#0
+	add m6502_pc,m6502_pc,#3
+	b %f0
+	;fixme: pocketnes can't handle more than one scanline per instruction
+	
+dobranchhackjmp
+dobranchhack
+	ldr r0,scanline
+	cmp r0,#241
+	bge %f0
+	;add safety code here
+	and cycles,cycles,#CYC_MASK	;speed hack
+0
+	fetch 3
+	
 ;----------------------------------------------------------------------------
 _F1;   SBC ($nn),Y
 ;----------------------------------------------------------------------------
@@ -1085,18 +1207,96 @@ _FE;   INC $nnnn,X
 	doAIX
 	opINC
 	fetch 7
-;----------------------------------------------------------------------------
-run_core	;r0=0 to return after frame
-;----------------------------------------------------------------------------
-	mov r1,#0
-	strb r1,novblankwait
 
-	str r0,dontstop
+	AREA rom_code_0, CODE, READONLY
+
+;illegal SLO instruction
+
+;----------------------------------------------------------------------------
+_07;	SLO $nn
+;----------------------------------------------------------------------------
+	doZ
+	opSLO
+	fetch_c 5
+;----------------------------------------------------------------------------
+_0F;	SLO $nnnn
+;----------------------------------------------------------------------------
+	doABS
+	opSLO
+	fetch_c 6
+;----------------------------------------------------------------------------
+_17;	SLO $nnnn
+;----------------------------------------------------------------------------
+	doZIXf
+	opSLO
+	fetch_c 6
+;----------------------------------------------------------------------------
+_1B;	SLO $nnnn,Y
+;----------------------------------------------------------------------------
+	doAIY
+	opSLO
+	fetch_c 7
+;----------------------------------------------------------------------------
+_1F;	SLO $nnnn,X
+;----------------------------------------------------------------------------
+	doAIX
+	opSLO
+	fetch_c 7
+
+
+;----------------------------------------------------------------------------
+_x2;	DOP  ;2 cycle double nop (_89 for Puzznic)
+;----------------------------------------------------------------------------
+	add m6502_pc,m6502_pc,#1
+	fetch 2
+;----------------------------------------------------------------------------
+_x3;	DOP  ;3 cycle double nop
+;----------------------------------------------------------------------------
+	add m6502_pc,m6502_pc,#1
+	fetch 3
+;----------------------------------------------------------------------------
+_x4;	DOP  ;4 cycle double nop
+;----------------------------------------------------------------------------
+	add m6502_pc,m6502_pc,#1
+	fetch 4
+
+
+;----------------------------------------------------------------------------
+_B3;   LDAX ($nn),Y   ;illegal instruction used by Super Cars
+;----------------------------------------------------------------------------
+	doIIY
+	opLOAD m6502_a
+	mov m6502_x,m6502_a
+	fetch 5
+
+
+;----------------------------------------------------------------------------
+run	;r0=0 to return after frame
+;----------------------------------------------------------------------------
 	tst r0,#1
 	stmeqfd sp!,{m6502_nz-m6502_pc,globalptr,cpu_zpage,lr}
 
-	ldr globalptr,=|wram_globals0$$Base|
+	ldr globalptr,=GLOBAL_PTR_BASE
 	ldr cpu_zpage,=NES_RAM
+
+	strb r0,_dontstop
+
+	
+	IMPORT ewram_owner_is_sram
+	IMPORT redecompress
+	ldr r2,=ewram_owner_is_sram
+	ldrb r2,[r2]
+	movs r2,r2
+	ldrne r1,=redecompress
+	movne lr,pc
+	bxne r1
+;;	ldr r1,=redecompress
+;;	mov lr,pc
+;;	bx r1
+
+	mov r1,#0
+	strb r1,novblankwait_
+
 	b line0x
 ;----------------------------------------------------------------------------
 ;cycles ran out
@@ -1117,17 +1317,17 @@ waitformulti
 	ldrb r3,emuflags+1
 	cmp r3,#SCALED
 	bhs %F0						;if unscaled
-	ldr r3,windowtop
+	ldrb r3,windowtop
 	tst r0,#0x100				;R=scroll down
 	addne r3,r3,#2
-	cmp r3,#79
-	movhi r3,#79
+	cmp r3,#80
+	movhi r3,#80
 	tst r0,#0x200				;L=scroll up
 	subnes r3,r3,#2
 	movmi r3,#0
-	str r3,windowtop
+	strb r3,windowtop
 0
-	ldr r2,dontstop
+	ldrb r2,_dontstop
 	cmp r2,#0
 	ldmeqfd sp!,{m6502_nz-m6502_pc,globalptr,cpu_zpage,lr}	;exit here if doing single frame:
 	bxeq lr						;return to rommenu()
@@ -1156,18 +1356,19 @@ waitformulti
 
 	tst r0,#0x200
 	tstne r1,#4					;L+SEL for BG adjust
-	ldrne r2,adjustblend
+	ldrneb r2,adjustblend
 	addne r2,r2,#1
-	strne r2,adjustblend
+	strneb r2,adjustblend
 
 	tst r0,#0x200				;L?
 	tstne r1,#8					;START?
-	ldrb r2,novblankwait		;0=Normal, 1=No wait, 2=Slomo
+	ldrb r2,novblankwait_		;0=Normal, 1=No wait, 2=Slomo
 	addne r2,r2,#1
 	cmp r2,#3
 	moveq r2,#0
-	strb r2,novblankwait
-
+	strb r2,novblankwait_
+	
+	[ SAVESTATES
 	tst r0,#0x100				;R?
 	tstne r1,#8					;START:
 	ldrne r1,=quickload
@@ -1177,24 +1378,43 @@ waitformulti
 	tstne r1,#4					;SELECT:
 	ldrne r1,=quicksave
 	bxne r1
+	]
 line0x
-	bl refreshNESjoypads	;Z=1 if communication ok
+
+	ldr r2,=ewram_owner_is_sram
+	ldrb r2,[r2]
+	movs r2,r2
+	ldrne r1,=redecompress
+	movne lr,pc
+	bxne r1
+
+	bl_long refreshNESjoypads	;Z=1 if communication ok
 	bne waitformulti		;waiting on other GBA..
 
 	ldr r0,AGBjoypad
-	ldr r2,fiveminutes		;sleep after 5/10/30 minutes of inactivity
+	ldr r1,=fiveminutes
+	ldr r2,[r1] ;fiveminutes		;sleep after 5/10/30 minutes of inactivity
 	cmp r0,#0				;(left out of the loop so waiting on multi-link
-	ldrne r2,sleeptime		;doesn't accelerate time)
+	ldrne r2,[r1,#4] ;sleeptime		;doesn't accelerate time)
 	subs r2,r2,#1
-	str r2,fiveminutes
-	bleq_long suspend
+	str r2,[r1] ;fiveminutes
+	bleq suspend
 
+	ldr r1,=ppustat_
+	mov r0,#0
+	strb r0,[r1]
+	ldr r0,stat_r_simple_func
+	ldr r1,=PPU_read_tbl+8
+	str r0,[r1]
+	
+	
+;	mov r1,#0
+;	strb r1,ppustat_		;vbl clear, sprite0 clear
 	mov r1,#0
-	strb r1,ppustat			;vbl clear, sprite0 clear
 	str r1,scanline			;reset scanline count
 
-	bl newframe				;display update
-	bl_long updatesound
+	bl_long newframe				;display update
+	bl updatesound
 
 	[ CHEATFINDER
 	ldr r0,=do_cheats
@@ -1209,23 +1429,6 @@ line0x
 ;	bl debug_
 ;-----------------------------------
 
-
- [ BUILD <> "DEBUG"
-	ldrb r4,novblankwait
-	teq r4,#1					;NoVSync?
-	beq l03
-l01
-	mov r0,#0					;don't wait if not necessary
-	mov r1,#1					;VBL wait
-	swi 0x040000				; Turn of CPU until VBLIRQ if not too late allready.
-	ldrb r0,PAL60				;wait for AGB VBL
-	cmp r0,#5
-	beq l01
-	teq r4,#2					;Slomo?
-	moveq r4,#0
-	beq l01
-l03
- ]
 	ldr r0,fpsvalue
 	add r0,r0,#1
 	str r0,fpsvalue
@@ -1233,62 +1436,154 @@ l03
 	adr r0,cpuregs
 	ldmia r0,{m6502_nz-m6502_pc}	;restore 6502 state
 
-	ldr r0,cyclesperscanline
+	ldr r0,cyclesperscanline1
 	ldr r1,frame
 	tst r1,#1
 	subeq r0,r0,#CYCLE			;Every other frame has 1/3 less CPU cycle.
 	add cycles,cycles,r0
-	adr r0,line1_to_119
+	ldr r0,=timeout_line0
+	str r0,line_end_timeout
+	ldr r0,=timeout_midline_line0
+	str r0,line_mid_timeout
 	str r0,nexttimeout
 
 	ldr pc,scanlinehook
-line1_to_119 ;------------------------
-	ldr r0,cyclesperscanline
-	add cycles,cycles,r0
 
-	ldr r1,scanline
-	add r1,r1,#1
-	str r1,scanline
-	cmp r1,#119
-	ldrne pc,scanlinehook
-;--------------------------------------------- between 119 and 120
-	ldr r0,nes_chr_map			;For sprites
-	str r0,old_chr_map			;TMNT 2 likes this
-	ldr r0,nes_chr_map+4
-	str r0,old_chr_map+4
+	AREA wram_code00, CODE, READWRITE
 
+
+timeout_midline_line0
+	adr r0,timeout_midline
+	str r0,line_mid_timeout
+	
+	ldr r0,scrollY
+	bl newY
+timeout_midline
+	ldr r0,line_end_timeout
+	str r0,nexttimeout
+	
+	ldr r0,scanline
+	add r0,r0,#1
+	str r0,scanline
+	mov r1,#1
+	strb r1,midscanline
+	
+1
+cyclesperscanline2_modify
+	add cycles,cycles,#85*CYCLE
+	
+	cmp r0,#240
+	ldrgt pc,midlinehook
+	
+	ldrb r1,ppuctrl1	;???
+	ands r1,r1,#0x18
+	beq_long skipaheadlines
+	strneb r1,ppuctrl1_startframe	
+skipaheadlines_return
+	;Reset X scroll (least 3 bits update before rest)
+	ldrb r0,nextx
+	ldrb r1,scrollX
+	eors addy,r0,r1
+	ldreq pc,midlinehook
+	strb r0,scrollX
+	bl newX
+	ldr pc,midlinehook
+
+timeout_line0
+	ldr r0,line_mid_timeout
+	str r0,nexttimeout
+	
+	ldr r0,scanline
+	
+cyclesperscanline1_modify 
+	add cycles,cycles,#1
+	
+	mov r1,#0
+	strb r1,midscanline
+
+	ldr r1,lastscanline
+	cmp r0,r1
+	beq lastscanlinestuff
+	ldr r1,sprite0y
+	cmp r0,r1
+	bleq line_y_stuff
+	cmp r0,#242
+	beq line_242_stuff
+	cmp r0,#119
+	beq line_119_stuff
+	cmp r0,#1
+	beq line_1_stuff
+	ldr pc,scanlinehook
+lastscanlinestuff
+	ldr r0,=line0
+	str r0,line_end_timeout
+	ldr pc,scanlinehook
+line_1_stuff
+	bl newframe_set0
+	
+	;yucky code because it only finds out the hit position here, graphics change and it's no longer valid
+	bl findsprite0
+	;end yucky code
+	
+	ldr pc,scanlinehook
+
+line_y_stuff
+	stmfd sp!,{r0,lr}
+	bl update_Y_hit
+	ldmfd sp!,{r0,pc}
+;	bx lr
+
+;line_Y_stuff
+;	stmfd sp!,{r0-r12,lr}
+;	bl findsprite0
+;	ldmfd sp!,{r0-r12,pc}
+	
+line_119_stuff
+	[ DIRTYTILES
+	;this is essential for Rare games
+	ldrb r0,ppuctrl1
+	tst r0,#0x18
+	beq %f0
+	mov r0,#1
+	strb r0,has_run_nes_chr_update_this_frame
+	bl nes_chr_update
+0	
+	]
+	
 	ldrb r0,ppuctrl0
 	strb r0,ppuctrl0frame		;Contra likes this
 
-	adr addy,line120_to_240
-	str addy,nexttimeout
 	ldr pc,scanlinehook
-line120_to_240 ;------------------------
-	ldr r0,cyclesperscanline
-	add cycles,cycles,r0
 
-	ldr r1,scanline
-	add r1,r1,#1
-	str r1,scanline
-	cmp r1,#240
-	ldrne pc,scanlinehook
+line_242_stuff
+	stmfd sp!,{r0-m6502_pc}	;save 6502 state
 
-	adr addy,line242
-	str addy,nexttimeout
-	ldr pc,scanlinehook
-line242 ;------------------------
+	ldrb r0,hackflags3
+	movs r0,r0
+	blne_long call_quickhackfinder
+
+	bl newframe_nes_vblank
+	ldmfd sp!,{r0-m6502_pc}	;save 6502 state
+
 NMIDELAY EQU CYCLE*21
-	add cycles,cycles,#NMIDELAY	;NMI is delayed a few cycles..
-
-;	ldrb r1,ppustat
-;	orr r1,r1,#0x90		;vbl & vram write
-	mov r1,#0x80		;vbl flag
-	strb r1,ppustat
-
+	ldr r1,cyclesperscanline1
+	sub cycles,cycles,r1
+	add cycles,cycles,#NMIDELAY
+	ldr r2,=ppustat_
+	ldrb r0,[r2]
+	orr r0,r0,#0x80	;set vbl, keep sprite0
+	strb r0,[r2]
+	ldr r0,=stat_R_clearvbl
+	ldr r2,=PPU_read_tbl+8
+	str r0,[r2]
+	
 	adr addy,line242NMI
 	str addy,nexttimeout
 	b default_scanlinehook
-line242NMI ;---------------------------
+line242NMI
+	ldr r0,line_mid_timeout
+	str r0,nexttimeout
+	
 	ldr r0,frame
 	add r0,r0,#1
 	str r0,frame
@@ -1301,7 +1596,7 @@ line242NMI ;---------------------------
 	bl debug_
  ]
 
-;frame irq
+;frame irq (this is inaccurate as all hell, since it's based on the PPU instead of the APU...)
 	ldrb r0,apu_4017
 	cmp r0,#0x00
 	bne noframeirq
@@ -1323,29 +1618,115 @@ noframeirq
 	bl Vec6502
 	sub cycles,cycles,#3*7*CYCLE
 0
-	ldr r0,cyclesperscanline
+	ldr r0,cyclesperscanline1
 	add cycles,cycles,r0
 	sub cycles,cycles,#NMIDELAY
-	adr r1,line242_to_end
-	str r1,nexttimeout
-
-	mov r0,#241
-	str r0,scanline
-
 	ldr pc,scanlinehook
-line242_to_end ;------------------------
-	ldr r0,cyclesperscanline
-	add cycles,cycles,r0
 
-	ldr r1,scanline
-	ldr r2,lastscanline
-	add r1,r1,#1
-	str r1,scanline
-	cmp r1,r2
-	adreq addy,line0
-	streq addy,nexttimeout
-
-	ldr pc,scanlinehook
+;line1_to_119 ;------------------------
+;	ldr r0,cyclesperscanline
+;	add cycles,cycles,r0
+;
+;	ldr r1,scanline
+;	add r1,r1,#1
+;	str r1,scanline
+;	cmp r1,#119
+;	ldrne pc,scanlinehook
+;;--------------------------------------------- between 119 and 120
+;	ldr r0,nes_chr_map			;For sprites
+;	str r0,old_chr_map			;TMNT 2 likes this
+;	ldr r0,nes_chr_map+4
+;	str r0,old_chr_map+4
+;
+;	ldrb r0,ppuctrl0
+;	strb r0,ppuctrl0frame		;Contra likes this
+;
+;	adr addy,line120_to_240
+;	str addy,nexttimeout
+;	ldr pc,scanlinehook
+;line120_to_240 ;------------------------
+;	ldr r0,cyclesperscanline
+;	add cycles,cycles,r0
+;
+;	ldr r1,scanline
+;	add r1,r1,#1
+;	str r1,scanline
+;	cmp r1,#240
+;	ldrne pc,scanlinehook
+;
+;	adr addy,line242
+;	str addy,nexttimeout
+;	ldr pc,scanlinehook
+;line242 ;------------------------
+;NMIDELAY EQU CYCLE*21
+;	add cycles,cycles,#NMIDELAY	;NMI is delayed a few cycles..
+;
+;;	ldrb r1,ppustat_
+;;	orr r1,r1,#0x90		;vbl & vram write
+;	mov r1,#0x80		;vbl flag
+;	strb r1,ppustat_
+;
+;	adr addy,line242NMI
+;	str addy,nexttimeout
+;	b default_scanlinehook
+;line242NMI ;---------------------------
+;	ldr r0,frame
+;	add r0,r0,#1
+;	str r0,frame
+; [ DEBUG
+;	mov r1,#REG_BASE			;darken screen during NES vblank
+;	mov r0,#0x00f1
+;	strh r0,[r1,#REG_BLDCNT]
+;	ldrh r0,[r1,#REG_VCOUNT]
+;	mov r1,#19
+;	bl debug_
+; ]
+;
+;;frame irq
+;	ldrb r0,apu_4017
+;	cmp r0,#0x00
+;	bne noframeirq
+;	mov r0,#0x40
+;	strb r0,doframeirq
+;	tst cycles,#CYC_I
+;	bne noframeirq
+;	sub cycles,cycles,#6*3*CYCLE
+;	ldr r12,=IRQ_VECTOR
+;	bl Vec6502
+;
+;noframeirq
+;
+;	ldrb r0,ppuctrl0
+;	tst r0,#0x80
+;	beq %F0			;NMI?
+;
+;	ldr r12,=NMI_VECTOR
+;	bl Vec6502
+;	sub cycles,cycles,#3*7*CYCLE
+;0
+;	ldr r0,cyclesperscanline
+;	add cycles,cycles,r0
+;	sub cycles,cycles,#NMIDELAY
+;	adr r1,line242_to_end
+;	str r1,nexttimeout
+;
+;	mov r0,#241
+;	str r0,scanline
+;
+;	ldr pc,scanlinehook
+;line242_to_end ;------------------------
+;	ldr r0,cyclesperscanline
+;	add cycles,cycles,r0
+;
+;	ldr r1,scanline
+;	ldr r2,lastscanline
+;	add r1,r1,#1
+;	str r1,scanline
+;	cmp r1,r2
+;	adreq addy,line0
+;	streq addy,nexttimeout
+;
+;	ldr pc,scanlinehook
 
 pcm_scanlinehook
 	ldr addy,=_pcmctrl
@@ -1369,6 +1750,7 @@ pcm_scanlinehook
 	bic r2,r2,#0x1000		;clear channel 5
 	str r2,[addy]
 	bne CheckI
+	b default_scanlinehook
 
 check_irq
 	;first verify ints are enabled
@@ -1386,6 +1768,7 @@ check_irq
 	bne irq6502
 	;code continues to the fetch 0 below
 hk0
+default_midlinehook
 default_scanlinehook
 	fetch 0
 
@@ -1424,13 +1807,71 @@ VecCont
 ;----------------------------------------------------------------------------
 fiveminutes DCD 5*60*60
 sleeptime DCD 5*60*60
-dontstop DCD 0
-novblankwait DCB 0
-PAL60 DCB 0
+	DCB 0
+;novblankwait DCB 0
+	DCB 0
+	DCB 0
+	DCB 0
 ;----------------------------------------------------------------------------
 	AREA rom_code, CODE, READONLY
-run
-	ldr pc,=run_core
+skipaheadlines
+	;if has been off the whole frame, don't bother changing scrolling (for speed)
+	ldrb r1,ppuctrl1_startframe
+	ands r1,r1,#0x18
+	ldreq pc,midlinehook
+
+	;last scrolled 
+	;current Y coordinate = scrollY + scanline - scrollYline
+	ldr r0,scrollYold
+	ldr r1,scrollYline
+	ldr r2,scanline
+	sub r1,r2,r1
+	sub r1,r1,#2
+	add r0,r0,r1
+	and r2,r0,#0xFF
+	cmp r2,#0xF0
+	subge r0,r0,#0x10
+	
+;	str r0,scrollY
+;	ldrb r0,scrollY
+	bl_long newY
+;	ldrb 
+;	subs r0,r0,#1
+;	strb r0,scrollY
+	ldr pc,midlinehook
+
+;;;	cmp r0,#1
+;;;	bleq newY
+
+
+
+
+call_quickhackfinder
+	;can destroy m6502_pc safely
+	;test for JMP 0 hack
+	ldrb r0,[m6502_pc]
+	cmp r0,#0x4C
+	bne %f0
+	mov addy,m6502_pc
+	ldrb r0,[m6502_pc,#1]
+	ldrb r1,[m6502_pc,#2]
+	orr m6502_pc,r0,r1,lsl#8
+	encodePC ;destroys r0,r1,r2, not addy
+	cmp addy,m6502_pc
+	mov m6502_pc,addy
+	beq %f1
+0
+	;jump to quickhackfinder
+	mov r0,m6502_pc
+	ldr r1,=quickhackfinder
+	bx r1
+1
+	ldr r1,=setjmp0hack
+	bx r1
+
+
+;run
+;	ldr pc,=run_core
 
 ;----------------------------------------------------------------------------
 _xx;	???					;invalid opcode
@@ -1440,12 +1881,79 @@ _xx;	???					;invalid opcode
 		mov r1,#0
 		bl debug_
 	]
+	mov r11,r11
 	fetch 2
+
+;----------------------------------------------------------------------------
+_4Cz;   JMP
+;----------------------------------------------------------------------------
+	sub addy,m6502_pc,#1
+	ldrb r0,[m6502_pc]
+	ldrb r1,[m6502_pc,#1]
+	orr m6502_pc,r0,r1,lsl#8
+	encodePC
+	subs r0,addy,m6502_pc
+	;between 0 and 31
+	cmp r0,#0
+	blt %f0
+	cmp r0,#31
+	bgt %f0
+	mov r0,r0,lsl#2
+	ldr r2,=SPEEDHACK_FIND_JMP_BUF
+	ldr r1,[r2,r0]
+	add r1,r1,#1
+	str r1,[r2,r0]
+0
+	fetch 3
+
+
+;----------------------------------------------------------------------------
+_10z;   BPL
+;----------------------------------------------------------------------------
+	ldr r1,=SPEEDHACK_FIND_BPL_BUF
+	ldr r2,=_10
+	b _find_speedhack_thingy
+;----------------------------------------------------------------------------
+_30z;   BMI
+;----------------------------------------------------------------------------
+	ldr r1,=SPEEDHACK_FIND_BMI_BUF
+	ldr r2,=_30
+	b _find_speedhack_thingy
+;----------------------------------------------------------------------------
+_50z;   BVC
+;----------------------------------------------------------------------------
+	ldr r1,=SPEEDHACK_FIND_BVC_BUF
+	ldr r2,=_50
+	b _find_speedhack_thingy
+;----------------------------------------------------------------------------
+_70z;   BVS
+;----------------------------------------------------------------------------
+	ldr r1,=SPEEDHACK_FIND_BVS_BUF
+	ldr r2,=_70
+	b _find_speedhack_thingy
+;----------------------------------------------------------------------------
+_90z;   BCC
+;----------------------------------------------------------------------------
+	ldr r1,=SPEEDHACK_FIND_BCC_BUF
+	ldr r2,=_90
+	b _find_speedhack_thingy
+;----------------------------------------------------------------------------
+_B0z;   BCS
+;----------------------------------------------------------------------------
+	ldr r1,=SPEEDHACK_FIND_BCS_BUF
+	ldr r2,=_B0
+	b _find_speedhack_thingy
 ;----------------------------------------------------------------------------
 _D0z;   BNE
 ;----------------------------------------------------------------------------
 	ldr r1,=SPEEDHACK_FIND_BNE_BUF
 	ldr r2,=_D0
+	b _find_speedhack_thingy
+;----------------------------------------------------------------------------
+_F0z;   BEQ
+;----------------------------------------------------------------------------
+	ldr r1,=SPEEDHACK_FIND_BEQ_BUF
+	ldr r2,=_F0
 
 _find_speedhack_thingy
 	ldrsb r0,[m6502_pc]
@@ -1463,41 +1971,73 @@ _find_speedhack_thingy
 	add r1,r1,#1
 	str r1,[r0]
 	bx r2
-;----------------------------------------------------------------------------
-_10z;   BPL
-;----------------------------------------------------------------------------
-	ldr r1,=SPEEDHACK_FIND_BPL_BUF
-	ldr r2,=_10
-	b _find_speedhack_thingy
-;----------------------------------------------------------------------------
-_F0z;   BEQ
-;----------------------------------------------------------------------------
-	ldr r1,=SPEEDHACK_FIND_BEQ_BUF
-	ldr r2,=_F0
-	b _find_speedhack_thingy
 
 
 
 ntsc_pal_reset
 ;---NTSC/PAL
+	stmfd sp!,{globalptr,lr}
+	ldr globalptr,=GLOBAL_PTR_BASE
+	
 	ldr r0,emuflags
 	tst r0,#PALTIMING
-	ldreq r1,=341*CYCLE		;NTSC		(113+2/3)*3
-	ldrne r1,=320*CYCLE		;PAL		(106+9/16)*3
-	str r1,cyclesperscanline
+	ldreq r1,=256*CYCLE		;NTSC		(113+2/3)*3
+	ldrne r1,=240*CYCLE		;PAL		(106+9/16)*3
+	str r1,cyclesperscanline1
+	ldreq r1,=85*CYCLE		;NTSC		(113+2/3)*3
+	ldrne r1,=80*CYCLE		;PAL		(106+9/16)*3
+	str r1,cyclesperscanline2
 	ldreq r1,=261			;NTSC
 	ldrne r1,=311			;PAL
 	str r1,lastscanline
-	ldr r1,=PAL60
+	ldreq r1,cyclesperscanline1_modify_ntsc
+	ldrne r1,cyclesperscanline1_modify_pal
+	ldr r0,=cyclesperscanline1_modify
+	str r1,[r0]
+	ldreq r1,cyclesperscanline2_modify_ntsc
+	ldrne r1,cyclesperscanline2_modify_pal
+	ldr r0,=cyclesperscanline2_modify
+	str r1,[r0]
+	ldreq r1,scroll_threshhold_mod_ntsc
+	ldrne r1,scroll_threshhold_mod_pal
+	ldr r0,=scroll_threshhold_mod
+	str r1,[r0]
+	
+	
 	mov r0,#0
-	strb r0,[r1]			;wait for AGB VBL
+	strb r0,PAL60
+	
+	ldrb r0,mapper_number
+	cmp r0,#69
+	IMPORT mapper69_ntsc_pal_reset
+	bl mapper69_ntsc_pal_reset
+	
+	ldmfd sp!,{globalptr,lr}
 	bx lr
 
+cyclesperscanline1_modify_ntsc	add cycles,cycles,#256*CYCLE
+cyclesperscanline1_modify_pal	add cycles,cycles,#240*CYCLE
+cyclesperscanline2_modify_ntsc	add cycles,cycles,#85*CYCLE
+cyclesperscanline2_modify_pal	add cycles,cycles,#80*CYCLE
+scroll_threshhold_mod_ntsc	cmp r1,#(251-3*3)*CYCLE
+scroll_threshhold_mod_pal	cmp r1,#227*CYCLE
+
+
+
 cpuhack_reset
-	adr r1,normalops
 	ldr r0,emuflags
+
+	tst r0,#USEPPUHACK
+	ldreq r1,=stat_R_simple
+	ldrne r1,=stat_R_ppuhack
+	str r1,stat_r_simple_func
+	
+	adr r1,normalops
+	eor r0,r0,#NOCPUHACK
 	tst r0,#NOCPUHACK	;load opcode set
-	adreq r1,jmpops
+	ldrb r2,hackflags2
+	cmpne r2,#0x4C		;disable default JMP hacks if branch hack is JMP
+	adrne r1,jmpops
 	ldrb r0,hackflags
 	cmp r0,#FindingHacks
 	adreq r1,branchops_for_finder
@@ -1510,9 +2050,10 @@ nr0	ldr r0,[r1,r3,lsl#2]
 	bpl nr0
 
 	ldrb r0,hackflags
-	tst r0,#0xE0
+	tst r0,#0xF0
 	bxeq lr				;No, exit.
-
+	cmp r0,#0x4C
+	beq branchhack_jmp
 	
 	mov r3,r0,lsr#5		;which opcode?
 	adr r1,branchops
@@ -1524,11 +2065,20 @@ nr0	ldr r0,[r1,r3,lsl#2]
 	strb r0,[r2,#5*4]
 
 	bx lr
+branchhack_jmp
+	ldr r12,opindex+8*4
+	ldr r2,branchops+8*4
+	str r2,[r12]
+	ldrb r0,hackflags2
+	add r0,r0,#1
+	strb r0,[r2]
+	bx lr
+
 
 branchops
-	DCD _10y,_30x,_50x,_70x,_90x,_B0x,_D0y,_F0y,_4Cx
+	DCD _10y,_30y,_50y,_70y,_90y,_B0y,_D0y,_F0y,_4Cy
 branchops_for_finder
-	DCD _10z,_30x,_50x,_70x,_90x,_B0x,_D0z,_F0z,_4Cx
+	DCD _10z,_30z,_50z,_70z,_90z,_B0z,_D0z,_F0z,_4Cz
 normalops
 	DCD _10,_30,_50,_70,_90,_B0,_D0,_F0,_4C
 jmpops
@@ -1543,11 +2093,12 @@ CPU_reset	;called by loadcart (r0-r9 are free to use)
 	str lr,[sp,#-4]!
 
 ;---SRAM setup
+	[ CARTSAVE
 	ldrb r0,cartflags
 	tst r0,#SRAM			;use sram?
 	ldrne r1,=sram_W2			;write to cart sram
 	strne r1,writemem_tbl+12
-
+	]
 ;---NTSC/PAL
 	bl ntsc_pal_reset
 ;---cpu reset
@@ -1579,23 +2130,26 @@ CPU_reset	;called by loadcart (r0-r9 are free to use)
 	ldr pc,[sp],#4
 ;----------------------------------------------------------
 	AREA wram_globals0, CODE, READWRITE
+GLOBAL_PTR_BASE
 op_table
-	DCD _00,_01,_xx,_xx,_xx,_05,_06,_xx,_08,_09,_0A,_xx,_xx,_0D,_0E,_xx
-	DCD _10,_11,_xx,_xx,_xx,_15,_16,_xx,_18,_19,_xx,_xx,_xx,_1D,_1E,_xx
+;	DCD _00,_01,_xx,_xx,_x3,_05,_06,_07,_08,_09,_0A,_xx,_xx,_0D,_0E,_0F
+;	DCD _10,_11,_xx,_xx,_x4,_15,_16,_17,_18,_19,_xx,_1B,_xx,_1D,_1E,_1F
+	DCD _00,_01,_xx,_xx,_x3,_05,_06,_xx,_08,_09,_0A,_xx,_xx,_0D,_0E,_xx
+	DCD _10,_11,_xx,_xx,_x4,_15,_16,_xx,_18,_19,_xx,_xx,_xx,_1D,_1E,_xx
 	DCD _20,_21,_xx,_xx,_24,_25,_26,_xx,_28,_29,_2A,_xx,_2C,_2D,_2E,_xx
-	DCD _30,_31,_xx,_xx,_xx,_35,_36,_xx,_38,_39,_xx,_xx,_xx,_3D,_3E,_xx
-	DCD _40,_41,_xx,_xx,_xx,_45,_46,_xx,_48,_49,_4A,_xx,_4C,_4D,_4E,_xx
-	DCD _50,_51,_xx,_xx,_xx,_55,_56,_xx,_58,_59,_xx,_xx,_xx,_5D,_5E,_xx
-	DCD _60,_61,_xx,_xx,_xx,_65,_66,_xx,_68,_69,_6A,_xx,_6C,_6D,_6E,_xx
-	DCD _70,_71,_xx,_xx,_xx,_75,_76,_xx,_78,_79,_xx,_xx,_xx,_7D,_7E,_xx
-	DCD _xx,_81,_xx,_xx,_84,_85,_86,_xx,_88,_xx,_8A,_xx,_8C,_8D,_8E,_xx
+	DCD _30,_31,_xx,_xx,_x4,_35,_36,_xx,_38,_39,_xx,_xx,_xx,_3D,_3E,_xx
+	DCD _40,_41,_xx,_xx,_x3,_45,_46,_xx,_48,_49,_4A,_xx,_4C,_4D,_4E,_xx
+	DCD _50,_51,_xx,_xx,_x4,_55,_56,_xx,_58,_59,_xx,_xx,_xx,_5D,_5E,_xx
+	DCD _60,_61,_xx,_xx,_x3,_65,_66,_xx,_68,_69,_6A,_xx,_6C,_6D,_6E,_xx
+	DCD _70,_71,_xx,_xx,_x4,_75,_76,_xx,_78,_79,_xx,_xx,_xx,_7D,_7E,_xx
+	DCD _x2,_81,_x2,_xx,_84,_85,_86,_xx,_88,_x2,_8A,_xx,_8C,_8D,_8E,_xx
 	DCD _90,_91,_xx,_xx,_94,_95,_96,_xx,_98,_99,_9A,_xx,_xx,_9D,_xx,_xx
 	DCD _A0,_A1,_A2,_xx,_A4,_A5,_A6,_xx,_A8,_A9,_AA,_xx,_AC,_AD,_AE,_xx
-	DCD _B0,_B1,_xx,_xx,_B4,_B5,_B6,_xx,_B8,_B9,_BA,_xx,_BC,_BD,_BE,_xx
-	DCD _C0,_C1,_xx,_xx,_C4,_C5,_C6,_xx,_C8,_C9,_CA,_xx,_CC,_CD,_CE,_xx
-	DCD _D0,_D1,_xx,_xx,_xx,_D5,_D6,_xx,_D8,_D9,_xx,_xx,_xx,_DD,_DE,_xx
-	DCD _E0,_E1,_xx,_xx,_E4,_E5,_E6,_xx,_E8,_E9,_EA,_xx,_EC,_ED,_EE,_xx
-	DCD _F0,_F1,_xx,_xx,_xx,_F5,_F6,_xx,_F8,_F9,_xx,_xx,_xx,_FD,_FE,_xx
+	DCD _B0,_B1,_xx,_B3,_B4,_B5,_B6,_xx,_B8,_B9,_BA,_xx,_BC,_BD,_BE,_xx
+	DCD _C0,_C1,_x2,_xx,_C4,_C5,_C6,_xx,_C8,_C9,_CA,_xx,_CC,_CD,_CE,_xx
+	DCD _D0,_D1,_xx,_xx,_x4,_D5,_D6,_xx,_D8,_D9,_xx,_xx,_xx,_DD,_DE,_xx
+	DCD _E0,_E1,_x2,_xx,_E4,_E5,_E6,_xx,_E8,_E9,_EA,_xx,_EC,_ED,_EE,_xx
+	DCD _F0,_F1,_xx,_xx,_x4,_F5,_F6,_xx,_F8,_F9,_xx,_xx,_xx,_FD,_FE,_xx
 	EXPORT g_readmem_tbl
 g_readmem_tbl
   ;readmem_tbl
@@ -1627,21 +2181,29 @@ rommap	% 4*4			;$8000-FFFF
 
 cpustate
 	;group these together for save/loadstate
-	% 6*4 ;cpuregs (nz,c,a,x,y,cycles)
+	% 6*4 ;cpuregs (nz,READMEM_TBL,a,x,y,cycles)
 g_m6502_pc
 	DCD 0 ;m6502_pc
 g_m6502_s
 	DCD 0 ;m6502_s:
-g_lastbank
-	DCD 0 ;lastbank: last memmap added to PC (used to calculate current PC)
-
-	DCD 0 ;nexttimeout:  jump here when cycles runs out
-	DCD 0 ;scanline
-	DCD 0 ;scanlinehook
 frametotal		;let ui.c see frame count for savestates
 	DCD 0 ;frame
-	DCD 0 ;cyclesperscanline (341*CYCLE or 320*CYCLE)
+g_scanline
+	DCD 0 ;scanline
+g_lastbank
+	DCD 0 ;lastbank: last memmap added to PC (used to calculate current PC)
+	DCD 0 ;nexttimeout:  jump here when cycles runs out
+	DCD 0 ;line_end_timeout
+	DCD 0 ;line_mid_timeout
+	DCD 0 ;scanlinehook
+	DCD 0 ;midlinehook
+	DCD 0 ;cyclesperscanline1 (256*CYCLE or 240*CYCLE)  (total is 341/320)
+	DCD 0 ;cyclesperscanline2 (85*CYCLE or 80*CYCLE)
 	DCD 0 ;lastscanline (261 or 311)
+	DCB 0 ;midscanline
+dontstop	DCB 0 ;_dontstop
+g_hackflags3	DCB 0 ;hackflags3
+	DCB 0 ;ppuctrl1_startframe
 ;----------------------------------------------------------------------------
 	END
 

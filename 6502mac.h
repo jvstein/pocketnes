@@ -269,8 +269,16 @@ _type	SETA      _ABS
 	doIIY                           ;indirect indexed Y     ($nn),Y
 _type	SETA      _ABS
 	ldrb r0,[m6502_pc],#1
+	[ HAPPY_CPU_TESTER
+	cmp r0,#0xFF
+	ldrb addy,[r0,cpu_zpage]!
+	subeq r0,r0,#0x100
+	ldrb r1,[r0,#1]
+	|
 	ldrb addy,[r0,cpu_zpage]!
 	ldrb r1,[r0,#1]
+	]
+
 	orr addy,addy,r1,lsl#8
 	add addy,addy,m6502_y,lsr#24
 ;	bic addy,addy,#0xff0000 ;Zelda2 needs this
@@ -463,6 +471,16 @@ _type	SETA      _ZPI
 	mov m6502_nz,m6502_a,asr#24 		;NZ
 	orr cycles,cycles,#CYC_C+CYC_V	;Prepare C & V
 	bicvc cycles,cycles,#CYC_V		;V
+	MEND
+
+	MACRO
+	opSLO
+	readmem
+	 add r0,r0,r0
+	 orrs m6502_a,m6502_a,r0,lsl#24
+	 orr m6502_nz,m6502_a,m6502_a,lsr#24		;NZ
+	 orr cycles,cycles,#CYC_C		;Prepare C
+	writemem
 	MEND
 
 	MACRO

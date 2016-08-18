@@ -63,4 +63,5 @@
 	IMPORT mapper249init
 
 	IMPORT mapper9BGcheck
+	IMPORT mapper69_ntsc_pal_reset
 	END

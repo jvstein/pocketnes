@@ -1,6 +1,10 @@
+	INCLUDE equates.h
+
+	[ LESSMAPPERS
+	|
+
 	AREA rom_code, CODE, READONLY
 
-	INCLUDE equates.h
 	INCLUDE memory.h
 	INCLUDE ppu.h
 	INCLUDE cart.h
@@ -55,4 +59,5 @@ swap16k
 	mov lr,addy
 	b_long map89AB_
 ;-------------------------------------------------------
+	]
 	END

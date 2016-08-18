@@ -1,3 +1,8 @@
+#include "includes.h"
+
+#if MULTIBOOT
+
+
 //based on Jeff Frohwein's slave boot demo:
 //http://www.devrs.com/gba/files/mbclient.txt
 
@@ -6,7 +11,7 @@
 
 u8 *findrom(int);
 
-extern u8 Image$$RO$$Limit;
+//extern u8 Image$$RO$$Limit;
 extern u8 Image$$ZI$$Base;
 extern u32 romnum;	//from cart.s
 extern u8 *textstart;	//from main.c
@@ -76,7 +81,7 @@ int swi25(void *p) {
 	__asm{mov r1,#1}
 	__asm{swi 0x25, {r0-r1}, {}, {r0-r2} }
 }
-
+
 //returns error code:  2=bad send, 3=too big
 #define TIMEOUT 40
 int SendMBImageToClient(void) {
@@ -204,3 +209,5 @@ transferEnd:
 	REG_IE=ie;
 	return i;
 }
+
+#endif

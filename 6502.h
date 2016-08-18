@@ -1,10 +1,12 @@
-	IMPORT |wram_globals0$$Base|
+	INCLUDE mem.h
+
+	IMPORT GLOBAL_PTR_BASE
 	IMPORT CPU_reset
 	IMPORT default_scanlinehook
+	IMPORT default_midlinehook
 	IMPORT pcm_scanlinehook
 ;	IMPORT irq6502
 	IMPORT CheckI
-	IMPORT PAL60
 	IMPORT cpustate
 	IMPORT rommap
 	IMPORT dontstop

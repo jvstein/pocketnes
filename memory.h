@@ -12,4 +12,10 @@
 	IMPORT rom_RC0
 	IMPORT rom_RE0
 	IMPORT filler_
+	IMPORT memset16
+	IMPORT memset32
+	IMPORT memcpy32
+	IMPORT memset16_
+	IMPORT memset32_
+	IMPORT memcpy32_
 	END

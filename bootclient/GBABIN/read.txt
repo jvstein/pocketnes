@@ -1,6 +1,0 @@
-making client.h:
-
-1. build bootclient.bin
-2. run "run1.bat"
-3. build decompress.gba
-4. run "run2.bat"

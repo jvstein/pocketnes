@@ -1,1 +1,0 @@
-For the source code to the bootclient, grab PocketNES 9.98

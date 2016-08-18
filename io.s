@@ -17,10 +17,15 @@
 	EXPORT serialinterrupt
 	EXPORT resetSIO
 	EXPORT thumbcall_r1
+	EXPORT gettime
 	EXPORT gbpadress
+	EXPORT LZ77UnCompVram
 
  AREA rom_code, CODE, READONLY ;-- - - - - - - - - - - - - - - - - - - - - -
 
+LZ77UnCompVram
+	swi 0x120000
+	bx lr
 scaleparms;	   NH     FH     NV     FV
 	DCD 0x0000,0x0100,0xff00,0x0150,0xfeb6,OAM_BUFFER1+6,AGB_OAM+518
 ;----------------------------------------------------------------------------
@@ -117,6 +122,65 @@ suspend	;called from ui.c and 6502.s
 
 	ldmfd sp!,{r0,r1,lr}
 	bx lr
+;----------------------------------------------------------------------------
+gettime	;called from ui.c
+;----------------------------------------------------------------------------
+	ldr r3,=0x080000c4		;base address for RTC
+	mov r1,#1
+	strh r1,[r3,#4]			;enable RTC
+	mov r1,#7
+	strh r1,[r3,#2]			;enable write
+
+	mov r1,#1
+	strh r1,[r3]
+	mov r1,#5
+	strh r1,[r3]			;State=Command
+
+	mov r2,#0x65			;r2=Command, YY:MM:DD 00 hh:mm:ss
+	mov addy,#8
+RTCLoop1
+	mov r1,#2
+	and r1,r1,r2,lsr#6
+	orr r1,r1,#4
+	strh r1,[r3]
+	mov r1,r2,lsr#6
+	orr r1,r1,#5
+	strh r1,[r3]
+	mov r2,r2,lsl#1
+	subs addy,addy,#1
+	bne RTCLoop1
+
+	mov r1,#5
+	strh r1,[r3,#2]			;enable read
+	mov r2,#0
+	mov addy,#32
+RTCLoop2
+	mov r1,#4
+	strh r1,[r3]
+	mov r1,#5
+	strh r1,[r3]
+	ldrh r1,[r3]
+	and r1,r1,#2
+	mov r2,r2,lsr#1
+	orr r2,r2,r1,lsl#30
+	subs addy,addy,#1
+	bne RTCLoop2
+
+	mov r0,#0
+	mov addy,#24
+RTCLoop3
+	mov r1,#4
+	strh r1,[r3]
+	mov r1,#5
+	strh r1,[r3]
+	ldrh r1,[r3]
+	and r1,r1,#2
+	mov r0,r0,lsr#1
+	orr r0,r0,r1,lsl#22
+	subs addy,addy,#1
+	bne RTCLoop3
+
+	bx lr
 ;--------------------------------------------------
 	INCLUDE visoly.s
  AREA wram_code1, CODE, READWRITE ;-- - - - - - - - - - - - - - - - - - - - - -
@@ -128,11 +192,9 @@ IO_R		;I/O read
 	sub r2,addy,#0x4000
 	subs r2,r2,#0x15
 	bmi empty_R
-	cmp r2,#2
-	bhi empty_R
-	adr r1,io_read_tbl
-	ldr pc,[r1,r2,lsl#2]
-
+	cmp r2,#3
+	ldrmi pc,[pc,r2,lsl#2]
+	b empty_R
 io_read_tbl
 	DCD _4015r	;4015 (sound)
 	DCD joy0_R	;4016: controller 1
@@ -141,10 +203,9 @@ io_read_tbl
 IO_W		;I/O write
 ;----------------------------------------------------------------------------
 	sub r2,addy,#0x4000
-	cmp r2,#0x17
-	bhi empty_W
-	adr r1,io_write_tbl
-	ldr pc,[r1,r2,lsl#2]
+	cmp r2,#0x18
+	ldrmi pc,[pc,r2,lsl#2]
+	b empty_W
 io_write_tbl
 	DCD _4000w
 	DCD _4001w
@@ -726,18 +787,19 @@ joy0_W		;4016
 ;----------------------------------------------------------------------------
 	tst r0,#1
 	movne pc,lr
+;	mov r2,#-1
 
 	ldr r0,joy0state
 	ldr r1,joy2state
 	orr r0,r0,r1,lsl#8
-;	orr r0,r0,#0xFFFFFF00	;for normal joypads.
+;	orr r0,r0,r2,lsl#8		;for normal joypads.
 	orr r0,r0,#0x00080000	;4player adapter
 	str r0,joy0serial
 
 	ldr r0,joy1state
 	ldr r1,joy3state
 	orr r0,r0,r1,lsl#8
-;	orr r0,r0,#0xFFFFFF00	;for normal joypads.
+;	orr r0,r0,r2,lsl#8		;for normal joypads.
 	orr r0,r0,#0x00040000	;4player adapter
 	str r0,joy1serial
 	mov pc,lr

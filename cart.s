@@ -58,7 +58,7 @@ mappertbl
 	DCD 2,mapper2init
 	DCD 3,mapper3init
 	DCD 4,mapper4init
-;	DCD 5,mapper5init
+	DCD 5,mapper5init
 	DCD 7,mapper7init
 	DCD 9,mapper9init
 	DCD 10,mapper10init
@@ -132,7 +132,7 @@ loadcart ;called from C:  r0=rom number, r1=emuflags
 
 	ldmfd sp!,{r0-r1}
 	str r0,romnumber
-        str r1,emuflags
+	str r1,emuflags
 
 	mov r2,#1
 	ldrb r1,[r3,#-12]
@@ -428,7 +428,7 @@ mirrorKonami_
 	movs r1,r0,lsr#2
 	tst r0,#1
 	bcc mirror2V_
-	bcs mirror1_
+;	bcs mirror1_
 mirror1_
 	ldrne r0,=m1111
 	ldreq r0,=m0000

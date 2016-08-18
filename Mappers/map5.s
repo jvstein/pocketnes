@@ -36,6 +36,7 @@ chrbank EQU mapperdata+20
 mmc5irqr EQU mapperdata+21
 mmc5mul1 EQU mapperdata+22
 mmc5mul2 EQU mapperdata+23
+m5mirror EQU mapperdata+24
 ;----------------------------------------------------------------------------
 mapper5init
 ;----------------------------------------------------------------------------
@@ -71,8 +72,7 @@ write0
 	cmp addy,#0x5200
 	bge mmc5_200
 
-	and r2,addy,#0xff
-	cmp r2,#0x00
+	ands r2,addy,#0xff
 	beq _00
 	cmp r2,#0x01
 	beq _01
@@ -88,6 +88,7 @@ write0
 	ble _20
 	cmp r2,#0x2b
 	ble _28
+	mov pc,lr		; get out.
 
 _00
 	and r0,r0,#0x03
@@ -96,17 +97,31 @@ _00
 _01
 	and r0,r0,#0x03
 	strb r0,chrsize
-	b mmc5chrb
+	b mmc5chrb		; both A and B?
 _05
-	mov r0,r0,lsr#2
-	b mirrorKonami_
+	strb r0,m5mirror
+	cmp r0,#0x55
+	beq mirror5_1
+	cmp r0,#0
+	beq mirror5_1
+	cmp r0,#0xE4
+	beq mirror4_
+	eor r1,r0,r0,lsr#4
+	ands r1,r1,#0x0C
+	b mirror2V_
+;	b mirrorKonami_
+
+
+mirror5_1
+	cmp r0,#0
+	b mirror1_
 
 _14
 _15
 _16
 _17
 	sub r2,r2,#0x14
-	adr r1,prgpage0
+	adrl r1,prgpage0
 	strb r0,[r1,r2]
 mmc5prg
 	ldrb r1,prgsize
@@ -158,36 +173,46 @@ _26
 _27
 	mov r1,#0
 	strb r1,chrbank
-	adr r1,prgpage0
-	sub r2,r2,#0x1C
+	adrl r1,chrpage0
+	sub r2,r2,#0x20
 	strb r0,[r1,r2]
 mmc5chra
+;	mov pc,lr		; get out?
 	ldrb r1,chrsize
 	cmp r1,#0x00
 	bne notch0
 	ldrb r0,chrpage7
+;	mov r0,r0,lsr#3
 	b chr01234567_
 notch0
-	mov addy,lr
+	str lr,[sp,#-4]!
 	cmp r1,#0x01
 	bne notch1
 	ldrb r0,chrpage3
+;	mov r0,r0,lsr#2
 	bl chr0123_
+	ldr lr,[sp],#4
 	ldrb r0,chrpage7
-	mov lr,addy
-	b chr4567_
+;	mov r0,r0,lsr#2
+;	b chr4567_
+	mov pc,lr		; get out?
 notch1
 	cmp r1,#0x02
 	bne notch2
 	ldrb r0,chrpage1
+;	mov r0,r0,lsr#1
 	bl chr01_
 	ldrb r0,chrpage3
+;	mov r0,r0,lsr#1
 	bl chr23_
 	ldrb r0,chrpage5
-	bl chr45_
+;	mov r0,r0,lsr#1
+;	bl chr45_
+	ldr lr,[sp],#4
 	ldrb r0,chrpage7
-	mov lr,addy
-	b chr67_
+;	mov r0,r0,lsr#1
+;	b chr67_
+	mov pc,lr		; get out?
 notch2
 	ldrb r0,chrpage0
 	bl chr0_
@@ -198,14 +223,15 @@ notch2
 	ldrb r0,chrpage3
 	bl chr3_
 	ldrb r0,chrpage4
-	bl chr4_
+;	bl chr4_
 	ldrb r0,chrpage5
-	bl chr5_
+;	bl chr5_
 	ldrb r0,chrpage6
-	bl chr6_
+;	bl chr6_
+	ldr lr,[sp],#4
 	ldrb r0,chrpage7
-	mov lr,addy
-	b chr7_
+;	b chr7_
+	mov pc,lr		; get out?
 
 _28				; For background.
 _29
@@ -213,45 +239,55 @@ _2a
 _2b
 	mov r1,#1
 	strb r1,chrbank
-	adr r1,prgpage0
-	sub r2,r2,#0x1c
+	adrl r1,chrpage0
+	sub r2,r2,#0x20
 	strb r0,[r1,r2]
 mmc5chrb
+;	mov pc,lr		; get out?
 	ldrb r1,chrsize
 	cmp r1,#0x00
 	bne notchb0
 	ldrb r0,chrpage11
+	mov r0,r0,lsr#3
 	b chr01234567_
 notchb0
 	str lr,[sp,#-4]!
 	cmp r1,#0x01
 	bne notchb1
 	ldrb r0,chrpage11
-	bl chr0123_
+;	mov r0,r0,lsr#2
+;	bl chr0123_
 	ldr lr,[sp],#4
 	ldrb r0,chrpage11
+	mov r0,r0,lsr#2
 	b chr4567_
+	mov pc,lr
 notchb1
 	cmp r1,#0x02
 	bne notchb2
 	ldrb r0,chrpage9
-	bl chr01_
+;	mov r0,r0,lsr#1
+;	bl chr01_
 	ldrb r0,chrpage11
-	bl chr23_
+;	mov r0,r0,lsr#1
+;	bl chr23_
 	ldrb r0,chrpage9
+	mov r0,r0,lsr#1
 	bl chr45_
 	ldr lr,[sp],#4
 	ldrb r0,chrpage11
+	mov r0,r0,lsr#1
 	b chr67_
+	mov pc,lr
 notchb2
 	ldrb r0,chrpage8
-	bl chr0_
+;	bl chr0_
 	ldrb r0,chrpage9
-	bl chr1_
+;	bl chr1_
 	ldrb r0,chrpage10
-	bl chr2_
+;	bl chr2_
 	ldrb r0,chrpage11
-	bl chr3_
+;	bl chr3_
 	ldrb r0,chrpage8
 	bl chr4_
 	ldrb r0,chrpage9
@@ -308,6 +344,7 @@ MMC5IRQR
 	cmp r1,#0
 	andne r1,r0,#0x40
 	strb r1,mmc5irqr
+	orr nes_nz,r0,r0,lsl#24
 	mov pc,lr
 
 MMC5MulA
@@ -315,12 +352,14 @@ MMC5MulA
 	ldrb r2,mmc5mul1
 	mul r0,r1,r2
 	and r0,r0,#0xff
+	orr nes_nz,r0,r0,lsl#24
 	mov pc,lr
 MMC5MulB
 	ldrb r1,mmc5mul1
 	ldrb r2,mmc5mul1
 	mul r0,r1,r2
 	mov r0,r0,lsr#8
+	orr nes_nz,r0,r0,lsl#24
 	mov pc,lr
 
 ;-------------------------------------------------------
@@ -337,7 +376,7 @@ h2
 	bge h1
 
 	cmp r1,r0
-	blt h1
+	ble h1
 
 	orr r2,r2,#0x80
 	strb r2,mmc5irqr

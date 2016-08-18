@@ -80,7 +80,7 @@ u16 xfer(u32 send) {
 	return (REG_SIOMULTI1);
 }
 
-void swi25(void *p) {
+int swi25(void *p) {
 	__asm{mov r1,#1}
 	__asm{swi 0x25, {r0-r1}, {}, {r0-r2} }
 }
@@ -93,13 +93,21 @@ int SendMBImageToClient(void) {
 	u32 i,j;
 	u16 key;
 	u16 *p;
+	u16 slaves;
 	u16 ie;
-	u32 emusize,romsize;
+	u32 emusize1,emusize2,romsize;
 
-	emusize=((u32)(&Image$$RO$$Limit)&0x3ffff)+((u32)(&Image$$RW$$Limit)&0x7fff);
+	p=(u16 *)&mp;
+	for(i=0;i<38;i++)
+		p[i]=0;
+
+//	emusize=((u32)(&Image$$RO$$Limit)&0x3ffff)+((u32)(&Image$$RW$$Limit)&0x7fff);
+	emusize1=((u32)(&Image$$RO$$Limit)&0x3ffff);
+	emusize2=((u32)(&Image$$RW$$Limit)&0x7fff);
 	if(pogones) romsize=48+16+(*(u8*)(findrom(romnum)+48+4))*16*1024+(*(u8*)(findrom(romnum)+48+5))*8*1024;  //need to read this from ROM
-	else romsize=48+*(u32*)(findrom(romnum)+32);
-	if(emusize+romsize>max_multiboot_size) return 3;
+	else romsize=sizeof(romheader)+*(u32*)(findrom(romnum)+32);
+	if(emusize1+romsize>max_multiboot_size) return 3;
+
 
 #if 0
     //this check frequently causes hangs, and is not necessary
@@ -115,22 +123,31 @@ int SendMBImageToClient(void) {
 
 	REG_RCNT=0;			//non-general purpose comms
 
-	i=250;
+	i=2500;
 	do {
 		DelayCycles(10);
-		j=xfer(0x6202);
-	} while(--i && j!=0x7202);
+		j=xfer(0x6200);
+	} while(--i && j);
 	if(!i) return 2;
 
-	xfer (0x6100);
+	i=1500;
+	do {
+		DelayCycles(10);
+		j=xfer(0x6200);
+	} while(--i && (j&0xfff0)!=0x7200);
+	if(!i) return 2;
+	slaves=(j&0xe);
+
+	xfer(0x6100 + slaves);
 	p=(u16*)0x2000000;
 	for(i=0;i<96; i++) {		//send header
 		xfer(*p);
 		p++;
 	}
 
-	xfer(0x6202);
-	mp.cb = 2;
+	xfer(0x6200);
+	xfer(0x6200 + slaves);
+	mp.cb = slaves;
 	mp.pc = 0xd1;
 	mp.startp=(u8*)Client;
 	i=sizeof(Client);
@@ -166,23 +183,30 @@ int SendMBImageToClient(void) {
 	REG_DM2CNT_H=0;
 	REG_DM3CNT_H=0;
 
-	swi25(&mp);	//Execute BIOS routine to transfer client binary to slave unit
-
+	if(swi25(&mp)){	//Execute BIOS routine to transfer client binary to slave unit
+		i=2;
+		goto transferEnd;
+	}
 	//now send everything else
 
 	REG_RCNT=0;			//non-general purpose comms
-    i=100000;
+	i=200;
 	do {
 		delay();
 		j=xfer(0x99);
 	} while(--i && j!=0x99); //wait til client is ready
-	if(!i) return 2; //mbclient not responding
+	if(!i){ //mbclient not responding
+		i=2;
+		goto transferEnd;
+	}
+	xfer(emusize1+emusize2+romsize);		//transmission size..
+	xfer((emusize1+emusize2+romsize)>>16);
 
-	xfer(emusize+romsize);		//transmission size..
-	xfer((emusize+romsize)>>16);
-
-	p=(u16*)((u32)textstart&0xa000000);		//(from rom or ram?)
-	for(;emusize;emusize-=2)	//send whole emu
+	p=(u16*)((u32)0x2000000);	//(from ewram.)
+	for(;emusize1;emusize1-=2)		//send first part of emu
+		xfer(*(p++));
+	p=(u16*)0x3000000;			//(from iwram)
+	for(;emusize2;emusize2-=2)		//send second part of emu
 		xfer(*(p++));
 	if(pogones)
 	{
@@ -197,6 +221,8 @@ int SendMBImageToClient(void) {
 	else p=(u16*)findrom(romnum);	//send ROM
 	for(;romsize;romsize-=2)
 		xfer(*(p++));
+	i=0;
+transferEnd:
 	REG_IE=ie;
-	return 0;
+	return i;
 }

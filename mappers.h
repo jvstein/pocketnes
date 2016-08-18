@@ -3,7 +3,7 @@
 	IMPORT mapper2init
 	IMPORT mapper3init
 	IMPORT mapper4init
-;	IMPORT mapper5init
+	IMPORT mapper5init
 	IMPORT mapper7init
 	IMPORT mapper9init
 	IMPORT mapper10init

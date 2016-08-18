@@ -6,4 +6,5 @@
 	IMPORT agb_vbl
 	IMPORT cpustate
 	IMPORT rommap
+	IMPORT dontstop
 	END

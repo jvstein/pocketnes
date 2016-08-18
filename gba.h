@@ -25,7 +25,7 @@ typedef struct {
 #define MEM_SRAM (u8*)0xe000000
 #define NES_SRAM (u8*)0x3005000	//from equates.h
 #define INTR_VECT *(u32*)0x3007FFC
-#define SCREENBASE (u16*)0x6003800
+#define SCREENBASE (u16*)0x6003000
 
 #define REG_DISPCNT *(vu32*)0x4000000
 #define MODE0 0

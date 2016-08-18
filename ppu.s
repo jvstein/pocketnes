@@ -26,6 +26,10 @@
 	EXPORT oambuffer
 	EXPORT ctrl1_W
 	EXPORT newX
+	EXPORT twitch
+	EXPORT flicker
+	EXPORT fpsenabled
+	EXPORT FPSValue
 
  AREA rom_code, CODE, READONLY
 
@@ -104,28 +108,28 @@ mp1	ldrb r0,[r1],#1
 	bne mp1
 	mov pc,lr
 
-vslist	DCD 0xfff3f318,vs_palmaps+64*0 ;Freedom Force		RP2C04-0001
-	DCD 0xf422f492,vs_palmaps+64*0 ;Gradius			RP2C04-0001
+vslist	DCD 0xfff3f318,vs_palmaps+64*0 ;Freedom Force	RP2C04-0001
+	DCD 0xf422f492,vs_palmaps+64*0 ;Gradius				RP2C04-0001
 	DCD 0x8000809c,vs_palmaps+64*0 ;Hoogans Alley		RP2C04-0001
-	DCD 0x80008281,vs_palmaps+64*0 ;Pinball			RP2C04-0001
-	DCD 0xfff3fd92,vs_palmaps+64*0 ;Platoon			RP2C04-0001
-	DCD 0x800080ce,vs_palmaps+64*1 ;(lady)Golf		RP2C04-0002
-	DCD 0x80008053,vs_palmaps+64*1 ;Mach Rider		RP2C04-0002
-	DCD 0xc008c062,vs_palmaps+64*1 ;Castlevania		RP2C04-0002
-	DCD 0x8050812f,vs_palmaps+64*1 ;Slalom			RP2C04-0002
-	DCD 0x85af863f,vs_palmaps+64*2 ;Excitebike		RP2C04-0003
+	DCD 0x80008281,vs_palmaps+64*0 ;Pinball				RP2C04-0001
+	DCD 0xfff3fd92,vs_palmaps+64*0 ;Platoon				RP2C04-0001
+	DCD 0x800080ce,vs_palmaps+64*1 ;(lady)Golf			RP2C04-0002
+	DCD 0x80008053,vs_palmaps+64*1 ;Mach Rider			RP2C04-0002
+	DCD 0xc008c062,vs_palmaps+64*1 ;Castlevania			RP2C04-0002
+	DCD 0x8050812f,vs_palmaps+64*1 ;Slalom				RP2C04-0002
+	DCD 0x85af863f,vs_palmaps+64*2 ;Excitebike			RP2C04-0003
 	DCD 0x859a862a,vs_palmaps+64*2 ;Excitebike(a1)		RP2C04-0003
 	DCD 0x8000810a,vs_palmaps+64*3 ;Super Mario Bros	RP2C04-0004
-	DCD 0xb578b5de,vs_palmaps+64*3 ;Ice Climber		RP2C04-0004
+	DCD 0xb578b5de,vs_palmaps+64*3 ;Ice Climber			RP2C04-0004
 	DCD 0xc298c325,vs_palmaps+64*3 ;Clu Clu Land		RP2C04-0004
-	DCD 0x804c8336,vs_palmaps+64*3 ;Star Luster		RP2C04-0004
-	DCD 0xc070d300,vs_palmaps+64*3 ;Battle City		RP2C04-0004
-	DCD 0xc298c325,vs_palmaps+64*3 ;Top Gun			RP2C04-0004?
+	DCD 0x804c8336,vs_palmaps+64*3 ;Star Luster			RP2C04-0004
+	DCD 0xc070d300,vs_palmaps+64*3 ;Battle City			RP2C04-0004
+	DCD 0xc298c325,vs_palmaps+64*3 ;Top Gun				RP2C04-0004?
 	DCD 0x800080ba,vs_palmaps+64*4 ;Soccer
 	DCD 0xf007f0a5,vs_palmaps+64*4 ;Goonies
 	DCD 0xff008005,vs_palmaps+64*4 ;Dr. Mario
 ;	DCD 0xf1b8f375,vs_palmaps+64*? ;Super Sky Kid		doesn't need palette
-;	DCD 0xffdac0c4,vs_palmaps+64*? ;TKO Boxing		doesn't start
+;	DCD 0xffdac0c4,vs_palmaps+64*? ;TKO Boxing			doesn't start
 ;	DCD 0xf958f88f,vs_palmaps+64*3 ;Super Xevious		doesn't start
 	DCD 0
 ;----------------------------------------------------------------------------
@@ -156,15 +160,18 @@ ppi0	mov r0,#0
 	adds r1,r1,#1
 	bne ppi0
 
-	ldr r1,=AGB_IRQVECT
-	ldr r2,=irqhandler
-	str r2,[r1]
+;	mov r0,#0
+	mov r0,#0x0440
+	orr r0,r0,r0,lsl#16
+	ldr r1,=DMA1BUFF	;clear DISPCNT+DMA1BUFF
+	mov r2,#404/2
+	bl filler_
 
 	mov r1,#REG_BASE
 	mov r0,#0x0008
 	strh r0,[r1,#REG_DISPSTAT]	;vblank en
 
-	mov r0,#4
+	mov r0,#7
 	strh r0,[r1,#REG_COLY]	;darkness setting for faded screens (bigger number=darker)
 
 	add r0,r1,#REG_BG0HOFS		;DMA0 always goes here
@@ -186,6 +193,10 @@ ppi0	mov r0,#0
 	mov r0,#1
 	strh r0,[r2,#8]		;master irq enable
 
+	ldr r1,=AGB_IRQVECT
+	ldr r2,=irqhandler
+	str r2,[r1]
+
 	bx addy
 ;----------------------------------------------------------------------------
 ppureset_	;called with CPU reset
@@ -202,6 +213,54 @@ ppureset_	;called with CPU reset
 	;strb r0,vramaddrinc
 
 	b map_palette	;do palette mapping (for VS)
+
+;----------------------------------------------------------------------------
+showfps_		;fps output, r0-r3=used.
+;----------------------------------------------------------------------------
+	ldrb r0,fpschk
+	subs r0,r0,#1
+	movmi r0,#59
+	strb r0,fpschk
+	bxpl lr					;End if not 60 frames has passed
+
+	ldrb r0,fpsenabled
+	tst r0,#1
+	bxeq lr					;End if not enabled
+
+	ldr r0,fpsvalue
+	cmp r0,#0
+	bxeq lr					;End if fps==0, to keep it from appearing in the menu
+	mov r1,#0
+	str r1,fpsvalue
+
+	mov r1,#100
+	swi 0x060000			;Division r0/r1, r0=result, r1=remainder.
+	add r0,r0,#0x30
+	strb r0,fpstext+5
+	mov r0,r1
+	mov r1,#10
+	swi 0x060000			;Division r0/r1, r0=result, r1=remainder.
+	add r0,r0,#0x30
+	strb r0,fpstext+6
+	add r1,r1,#0x30
+	strb r1,fpstext+7
+	
+
+	adr r0,fpstext
+	ldr r2,=DEBUGSCREEN
+db1
+	ldrb r1,[r0],#1
+	orr r1,r1,#0x4100
+	strh r1,[r2],#2
+	tst r2,#15
+	bne db1
+
+	bx lr
+;----------------------------------------------------------------------------
+fpstext DCB "FPS:    "
+fpsenabled DCB 0
+fpschk	DCB 0
+		DCB 0,0
 ;----------------------------------------------------------------------------
 	AREA wram_code1, CODE, READWRITE
 irqhandler	;r0-r3,r12 are safe to use
@@ -231,7 +290,7 @@ jmpintr
 	mrs r3,spsr
 	stmfd sp!,{r3,lr}
 	mrs r3,cpsr
-	bic r3,r3,#0xdf
+	bic r3,r3,#0x9f
 	orr r3,r3,#0x1f			;--> Enable IRQ & FIQ. Set CPU mode to System.
 	msr cpsr_cf,r3
 	stmfd sp!,{lr}
@@ -243,26 +302,30 @@ jmpintr
 irq0
 	ldmfd sp!,{lr}
 	mrs r3,cpsr
-	bic r3,r3,#0xdf
+	bic r3,r3,#0x9f
 	orr r3,r3,#0x92        		;--> Disable IRQ. Enable FIQ. Set CPU mode to IRQ
 	msr cpsr_cf,r3
 	ldmfd sp!,{r0,lr}
 	msr spsr_cf,r0
 	bx lr
 ;----------------------------------------------------------------------------
-twitch DCD 0
+twitch	DCB 0
+flicker DCB 1
+		DCB 0,0
 vblankinterrupt;
 ;----------------------------------------------------------------------------
+	stmfd sp!,{r4-r7,globalptr,lr}
+	ldr globalptr,=|wram_globals0$$Base|
+
 	strb r1,agb_vbl
 
-	stmfd sp!,{r4-r7,globalptr,lr}
+	bl showfps_
 
-	ldr globalptr,=|wram_globals0$$Base|
 
 	ldr r2,=DMA0BUFF	;setup DMA buffer for scrolling:
 	add r3,r2,#160*4
 	ldr r1,dmascrollbuff
-        ldrb r0,emuflags+1
+	ldrb r0,emuflags+1
 	cmp r0,#SCALED
 	bhs vbl0
 
@@ -277,9 +340,10 @@ vbl0					;(scaled)
 	mov r4,#YSTART*65536
 	add r1,r1,#2
 
-	ldr r0,twitch
-	eors r0,r0,#1
-	str r0,twitch
+	ldrb r5,flicker
+	ldrb r0,twitch
+	eors r0,r0,r5
+	strb r0,twitch
 		ldrh r5,[r1],#YSTART*4-2 ;adjust vertical scroll to avoid screen wobblies
 	ldreq r0,[r1],#4
 	addeq r0,r0,r4
@@ -393,7 +457,7 @@ newframe	;called at line 0	(r0-r9 safe to use)
 	str r0,tmpoambuffer
 	str r1,dmaoambuffer
 
-	adr r0,windowtop	;load wtop, store in wtop+4.......load wtop+8, store in wtop+12
+	adrl r0,windowtop	;load wtop, store in wtop+4.......load wtop+8, store in wtop+12
 	ldmia r0,{r1-r3}	;load with post increment
 	stmib r0,{r1-r3}	;store with pre increment
 
@@ -401,7 +465,7 @@ newframe	;called at line 0	(r0-r9 safe to use)
 	mov r1,#0
 	bl initY
 
-        ldrb r0,emuflags+1             ;refresh DMA1,DMA2 buffers
+	ldrb r0,emuflags+1             ;refresh DMA1,DMA2 buffers
 	cmp r0,#SCALED				;not needed for unscaled mode..
 	bmi nf7					;(DMA'd directly from dispcntbuff/bg0cntbuff)
 
@@ -414,7 +478,7 @@ newframe	;called at line 0	(r0-r9 safe to use)
 	adr lr,nf7
 
 nf0	add r3,r2,#160*2
-		ldr r0,twitch
+		ldrb r0,twitch
 		tst r0,#1
 	ldrneh r0,[r1],#2
 	strneh r0,[r2],#2
@@ -454,9 +518,8 @@ nf8	ldmia addy!,{r0-r7}
 PPU_R;
 ;----------------------------------------------------------------------------
 	and r0,addy,#7
-	adr r1,PPU_read_tbl
-	ldr pc,[r1,r0,lsl#2]
-
+	ldr pc,[pc,r0,lsl#2]
+	DCD 0
 PPU_read_tbl
 	DCD empty_R	;$2000
 	DCD empty_R	;$2001
@@ -470,9 +533,8 @@ PPU_read_tbl
 PPU_W;
 ;----------------------------------------------------------------------------
 	and r2,addy,#7
-	adr r1,PPU_write_tbl
-	ldr pc,[r1,r2,lsl#2]
-
+	ldr pc,[pc,r2,lsl#2]
+	DCD 0
 PPU_write_tbl
 	DCD ctrl0_W	;$2000
 	DCD ctrl1_W	;$2001
@@ -548,9 +610,10 @@ ctrl1line	DCD 0 ;when?
 ;----------------------------------------------------------------------------
 stat_R		;(2002)
 ;----------------------------------------------------------------------------
-        ldrb r0,emuflags       ;probably in a polling loop
+	ldrb r0,emuflags       ;probably in a polling loop
 	tst r0,#USEPPUHACK
-	movne cycles,#0		;let's help out
+	andne cycles,cycles,#0xF			;let's help out
+;	andne cycles,cycles,#CYC_MASK		;let's help out
 
 	mov r0,#0
 	strb r0,toggle
@@ -873,6 +936,7 @@ db0
 	bne db0
  ]
 	bx lr
+
 ;----------------------------------------------------------------------------
 
 vram_write_tbl	;for vmdata_W, r0=data, addy=vram addr
@@ -929,7 +993,8 @@ dmaoambuffer DCD OAM_BUFFER2	;triple buffered hell!!!
 
 ;----------------------------------------------------------------------------
 	AREA wram_globals1, CODE, READWRITE
-
+FPSValue
+	DCD 0
 AGBinput		;this label here for main.c to use
 	DCD 0 ;AGBjoypad (why is this in ppu.s again?  um.. i forget)
 NESinput	DCD 0 ;NESjoypad (this is what NES sees)

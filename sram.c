@@ -21,6 +21,8 @@ int totalstatesize;	//how much SRAM is used
 u8 *findrom(int);
 void cls(void);		//main.c
 void drawtext(int,char*,int);
+void scrolll(void);
+void scrollr(void);
 void waitframe(void);
 u32 getmenuinput(int);
 void writeconfig(void);
@@ -257,7 +259,7 @@ stateheader* drawstates(int menutype,int *menuitems,int *menuoffset) {
 		size=sh->size;
 		if(sh->type==type) {
 			if(startline+statecount>=FIRSTLINE && startline+statecount<=LASTLINE) {
-				drawtext(startline+statecount,sh->title,sel==statecount);
+				drawtext(32+startline+statecount,sh->title,sel==statecount);
 			}
 			if(sel==statecount) {		//keep info for selected state
 				time=sh->framecount;
@@ -272,19 +274,19 @@ stateheader* drawstates(int menutype,int *menuitems,int *menuoffset) {
 
 	if(sel!=statecount) {//not <NEW>
 		getstatetimeandsize(s,time,selectedstatesize,total);
-		drawtext(18,s,0);
+		drawtext(32+18,s,0);
 	}
 	if(statecount)
-		drawtext(19,"Push SELECT to delete",0);
+		drawtext(32+19,"Push SELECT to delete",0);
 	if(menutype==SAVEMENU) {
 		if(startline+statecount<=LASTLINE)
-			drawtext(startline+statecount,"<NEW>",sel==statecount);
-		drawtext(0,"Save state:",0);
+			drawtext(32+startline+statecount,"<NEW>",sel==statecount);
+		drawtext(32,"Save state:",0);
 		statecount++;	//include <NEW> as a menuitem
 	} else if(menutype==LOADMENU) {
-		drawtext(0,"Load state:",0);
+		drawtext(32,"Load state:",0);
 	} else {
-		drawtext(0,"Erase SRAM:",0);
+		drawtext(32,"Erase SRAM:",0);
 	}
 	*menuitems=statecount;
 	totalstatesize=total;
@@ -326,6 +328,8 @@ void managesram() {
 	drawstates(SRAMMENU,&menuitems,&offset);
 	if(!menuitems)
 		return;		//nothing to do!
+
+	scrolll();
 	do {
 		i=getmenuinput(menuitems);
 		if(i&SELECT) {
@@ -335,6 +339,7 @@ void managesram() {
 		if(i&(SELECT+UP+DOWN+LEFT+RIGHT))
 			drawstates(SRAMMENU,&menuitems,&offset);
 	} while(menuitems && !(i&(L_BTN+R_BTN+B_BTN)));
+	scrollr();
 }
 
 void savestatemenu() {
@@ -349,6 +354,7 @@ void savestatemenu() {
 
 	selected=0;
 	drawstates(SAVEMENU,&menuitems,&offset);
+	scrolll();
 	do {
 		i=getmenuinput(menuitems);
 		if(i&(A_BTN)) {
@@ -360,6 +366,7 @@ void savestatemenu() {
 		if(i&(SELECT+UP+DOWN+LEFT+RIGHT))
 			drawstates(SAVEMENU,&menuitems,&offset);
 	} while(!(i&(L_BTN+R_BTN+A_BTN+B_BTN)));
+	scrollr();
 }
 
 //locate last save by checksum
@@ -529,6 +536,7 @@ void loadstatemenu() {
 	if(!menuitems)
 		return;		//nothing to load!
 
+	scrolll();
 	do {
 		key=getmenuinput(menuitems);
 		if(key&(A_BTN)) {
@@ -554,6 +562,7 @@ void loadstatemenu() {
 		if(key&(SELECT+UP+DOWN+LEFT+RIGHT))
 			sh=drawstates(LOADMENU,&menuitems,&offset);
 	} while(menuitems && !(key&(L_BTN+R_BTN+A_BTN+B_BTN)));
+	scrollr();
 }
 
 const configdata configtemplate={

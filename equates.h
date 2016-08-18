@@ -147,6 +147,7 @@ frame # 4
 cyclesperscanline # 4
 lastscanline # 4
 			;ppu.s (wram_globals1)
+fpsvalue # 4
 AGBjoypad # 4
 NESjoypad # 4
 adjustblend # 4

@@ -24,6 +24,9 @@
 	EXPORT cpustate
 	EXPORT rommap
 	EXPORT frametotal
+	EXPORT sleeptime
+	EXPORT novblankwait
+	EXPORT dontstop
 
 pcmirqbakup EQU mapperdata+24
 pcmirqcount EQU mapperdata+28
@@ -1157,9 +1160,9 @@ line0x
 	bne waitformulti	;waiting on other GBA..
 
 	ldr r0,AGBjoypad
-	ldr r2,fiveminutes	;sleep after 5 minutes of inactivity
-	cmp r0,#0		;(left out of the loop so waiting on multi-link
-	movne r2,#0x4700	;doesn't accelerate time)
+	ldr r2,fiveminutes		;sleep after 5/10/30 minutes of inactivity
+	cmp r0,#0				;(left out of the loop so waiting on multi-link
+	ldrne r2,sleeptime		;doesn't accelerate time)
 	subs r2,r2,#1
 	str r2,fiveminutes
 	bleq suspend
@@ -1197,6 +1200,10 @@ l03
 	mov r0,#0
 	strb r0,agb_vbl
  ]
+	ldr r0,fpsvalue
+	add r0,r0,#1
+	str r0,fpsvalue
+
 	adr r0,cpuregs
 	ldmia r0,{nes_nz-nes_pc}	;restore 6502 state
 
@@ -1365,6 +1372,7 @@ irq6502
 	fetch 7
 ;----------------------------------------------------------------------------
 fiveminutes DCD 5*60*60
+sleeptime DCD 5*60*60
 dontstop DCD 0
 agb_vbl DCB 0		;nonzero when AGB enters vblank
 novblankwait DCB 0

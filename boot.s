@@ -54,8 +54,9 @@ __main
 		msr cpsr_f, r0
 	]
 
-	ldr	sp,=0x3007f00
-	LDR	r5,=|Image$$RO$$Limit| ;r5=pointer to IWRAM code
+
+	ldr sp,=0x3007f00			;set System Stack
+	LDR	r5,=|Image$$RO$$Limit|	;r5=pointer to IWRAM code
 
 	ldr r0,=|Image$$RO$$Limit|
  [ BUILD = "DEBUG"
@@ -96,6 +97,23 @@ _1	CMP	r3, r1 ; Zero init
 	STRCC	r2, [r3], #4
 	BCC	_1
 
+
+;---------------------------------------- MB test ----------
+	tst lr,#0x8000000
+	bne _4					;running from cart?
+	ldr r0,=|Image$$RO$$Limit|
+	mov r3,#0x30000			;up to 192kbyte
+	add r3,r3,#0x90			;+headers (Adv+NES)
+	mov r1,r0
+_loop
+	ldr r2,[r6],#4			;old textstart
+	str r2,[r1],#4
+	subs r3,r3,#4
+	bne _loop
+	mov r6,r0				;new textstart
+_4
+;---------------------------------------- MB test ----------
+
  [ DEBUG
 	ldr r0,=NES_RAM
 	cmp r1,r0		;sanity check - make sure iwram code fits in iwram
@@ -108,20 +126,22 @@ giveup	bhi giveup
 	ldr r4,=max_multiboot_size
 	str r6,[r4]
 
-;	ldr r0,=0x8014		;3/1 waitstate & prefetch. No difference???
-	mov r0,#0x0014		;3/1 waitstate
+;	ldr r0,=0x4014		;3/1 wait state, prefetch.  No difference???
+;	mov r0,#0x0018		;2/1 wait state, not working on flashcarts?
+	mov r0,#0x0014		;3/1 wait state
 	ldr r1,=REG_WAITCNT
-	strh r0,[r1]		;3/1 waitstate
+	strh r0,[r1]
 
 ;	ldr r0,=0x0E000020	;1 waitstate,0x0D000020=2 waitstate
 ;	ldr r1,=0x04000800	;EWRAM WAITCTL
-;	str r0,[r1]		;3/1 waitstate
+;	str r0,[r1]			;2/1 waitstate
 
 	ldr r1,=C_entry
 	bx r1
 ;----------------------------------------------------------
 font
-	INCBIN font.bin
+	INCBIN font.lz77
+;	INCBIN font.bin
 fontpal
 	INCBIN fontpal.bin
 	END

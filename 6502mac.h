@@ -182,7 +182,7 @@ _type	SETA      _ABS
 	ldrb r0,[nes_pc],#1
 	orr addy,addy,r0,lsl#8
 	add addy,addy,nes_x,lsr#24
-	bic addy,addy,#0xff0000 ;Base Wars needs this
+;	bic addy,addy,#0xff0000 ;Base Wars needs this
 	MEND
 
 	MACRO
@@ -192,7 +192,7 @@ _type	SETA      _ABS
 	ldrb r0,[nes_pc],#1
 	orr addy,addy,r0,lsl#8
 	add addy,addy,nes_y,lsr#24
-	bic addy,addy,#0xff0000 ;Tecmo Bowl needs this
+;	bic addy,addy,#0xff0000 ;Tecmo Bowl needs this
 	MEND
 
 	MACRO
@@ -219,7 +219,7 @@ _type	SETA      _ABS
 	ldrb r1,[r0,#1]
 	orr addy,addy,r1,lsl#8
 	add addy,addy,nes_y,lsr#24
-	bic addy,addy,#0xff0000 ;Zelda2 needs this
+;	bic addy,addy,#0xff0000 ;Zelda2 needs this
 	MEND
 
 	MACRO

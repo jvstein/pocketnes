@@ -35,7 +35,7 @@ write8000
 ;-------------------------------------------------------
 	tst addy,#0x1000
 	andeqs addy,addy,#3
-	beq map89AB_
+	beq_long map89AB_
 	movne pc,lr			; 0x900x Should really be emulation of the VRC6 soundchip.
 
 ;-------------------------------------------------------
@@ -48,14 +48,14 @@ writeA000
 	movne pc,lr			; !0xB003 Should really be emulation of the VRC6 soundchip.
 
 	mov r0,r0,lsr#2
-	b mirrorKonami_
+	b_long mirrorKonami_
 
 ;-------------------------------------------------------
 writeC000
 ;-------------------------------------------------------
 	tst addy,#0x1000
 	tsteq addy,#0x3
-	beq mapCD_
+	beq_long mapCD_
 writeD000	;addy=D/E/Fxxx
 writeE000
 	sub r2,addy,#0xD000

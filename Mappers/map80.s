@@ -43,25 +43,25 @@ write80
 wF0
 	mov addy,r0
 	stmfd sp!,{r0,lr}
-	bl chr0_
+	bl_long chr0_
 	ldr r1,patch
 	cmp r1,#0
 	beq noPatch
 	tst addy,#0x80
-	bl mirror1_
+	bl_long mirror1_
 noPatch
 	ldmfd sp!,{r0,lr}
 	add r0,r0,#1
-	b chr1_
+	b_long chr1_
 wF1
 	stmfd sp!,{r0,lr}
-	bl chr2_
+	bl_long chr2_
 	ldmfd sp!,{r0,lr}
 	add r0,r0,#1
-	b chr3_
+	b_long chr3_
 wF6
 	ands r0,r0,#1
-	b mirror2H_
+	b_long mirror2H_
 
 
 write80tbl DCD wF0,wF1,chr4_,chr5_,chr6_,chr7_,wF6,void,void,void,map89_,map89_,mapAB_,mapAB_,mapCD_,mapCD_

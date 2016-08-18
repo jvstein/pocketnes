@@ -19,7 +19,7 @@ mapper228init;		Action 52 & Cheetahmen 2. PocketNES only support 256k of CHR, Ac
 	str r0,rommask		;rommask=romsize-1
 
 	mov r0,#0
-	b map89ABCDEF_
+	b_long map89ABCDEF_
 ;-------------------------------------------------------
 write0
 ;-------------------------------------------------------
@@ -28,11 +28,11 @@ write0
 	orr r0,r0,addy,lsl#2
 	mov addy,lr
 
-	bl chr01234567_
+	bl_long chr01234567_
 
 	ldr r0,mapbyte1
 	tst r0,#0x2000
-	bl mirror2V_
+	bl_long mirror2V_
 
 	ldr r0,mapbyte1
 	tst r0,#0x1000
@@ -42,7 +42,7 @@ write0
 	bne swap16k
 	mov r0,r0,lsr#7
 	mov lr,addy
-	b map89ABCDEF_
+	b_long map89ABCDEF_
 
 swap16k
 	and r1,r0,r0,lsl#1
@@ -50,9 +50,9 @@ swap16k
 	orr r1,r1,#0xFE
 	and r0,r1,r0,lsr#6
 	str r0,mapbyte1
-	bl mapCDEF_
+	bl_long mapCDEF_
 	ldr r0,mapbyte1
 	mov lr,addy
-	b map89AB_
+	b_long map89AB_
 ;-------------------------------------------------------
 	END

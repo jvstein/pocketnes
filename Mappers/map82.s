@@ -37,6 +37,6 @@ write1		;$A000
 	tst addy,#1
 	movne pc,lr
 	tst r0,#1
-	b mirror2V_
+	b_long mirror2V_
 ;----------------------------------------------------------------------------
 	END

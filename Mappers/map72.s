@@ -18,10 +18,10 @@ write72
 ;-------------------------------------------------------
 	stmfd sp!,{r0,lr}
 	tst r0,#0x80
-	blne map89AB_
+	blne_long map89AB_
 	ldmfd sp!,{r0,lr}
 	tst r0,#0x40
-	bne chr01234567_
+	bne_long chr01234567_
 	mov pc,lr
 
 ;-------------------------------------------------------

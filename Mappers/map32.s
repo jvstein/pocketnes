@@ -21,18 +21,18 @@ write8000
 	bne write9000
 	ldr r1,pswitch
 	tst r1,#0x02
-	beq map89_
-	bne mapCD_
+	beq_long map89_
+	bne_long mapCD_
 write9000
 	str r0,pswitch
 	tst r0,#0x1
-	b mirror2V_
+	b_long mirror2V_
 
 ;-------------------------------------------------------
 writeA000
 ;-------------------------------------------------------
 	tst addy,#0x1000
-	beq mapAB_
+	beq_long mapAB_
 	and addy,addy,#7
 	ldr r1,=writeCHRTBL
 	ldr pc,[r1,addy,lsl#2]

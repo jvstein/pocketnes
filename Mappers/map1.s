@@ -34,7 +34,7 @@ reset
 	orr r0,r0,#0x0c
 	strb r0,reg0
 
-	b promswitch
+	b_long promswitch
 ;----------------------------------------------------------------------------
 	AREA wram_code3, CODE, READWRITE
 ;----------------------------------------------------------------------------
@@ -43,7 +43,7 @@ write0		;($8000-$9FFF)
 	adr addy,w0
 writelatch ;-----
 	tst r0,#0x80
-	bne reset
+	bne_long reset
 
 	ldrb r2,latchbit
 	ldrb r1,latch

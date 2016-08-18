@@ -12,7 +12,11 @@
 	IMPORT ui	;ui.c
 	IMPORT quickload	;sram.c
 	IMPORT quicksave	;sram.c
-	IMPORT pcmctrl
+	IMPORT _pcmctrl
+
+	[ CHEATFINDER
+	IMPORT do_cheats
+	]
 
 	EXPORT CPU_reset
 	EXPORT ntsc_pal_reset
@@ -30,6 +34,23 @@
 	EXPORT sleeptime
 	EXPORT novblankwait
 	EXPORT dontstop
+
+	EXPORT SPEEDHACK_FIND_BPL_BUF
+	EXPORT SPEEDHACK_FIND_BNE_BUF
+	EXPORT SPEEDHACK_FIND_BEQ_BUF
+	
+	EXPORT CHEATFINDER_BITS
+	EXPORT CHEATFINDER_VALUES
+	EXPORT CHEATFINDER_CHEATS
+
+	EXPORT rommap
+	
+	EXPORT g_m6502_pc
+	EXPORT g_m6502_s
+	EXPORT g_lastbank
+	
+	EXPORT g_memmap_tbl
+	EXPORT g_writemem_tbl
 
 pcmirqbakup EQU mapperdata+24
 pcmirqcount EQU mapperdata+28
@@ -123,7 +144,7 @@ _10y;   BPL *
 	ldrsb r0,[m6502_pc],#1
 	add m6502_pc,m6502_pc,r0
 	cmp r0,#-4						;speed hack for SMB3.
-	andcs cycles,cycles,#CYC_MASK	;speed hack 
+	andeq cycles,cycles,#CYC_MASK	;speed hack 
 	fetch 3
 ;----------------------------------------------------------------------------
 _11;   ORA ($nn),Y
@@ -298,9 +319,9 @@ _40;   RTI
 	decodeP
 	pop16		;pop the return address
 	encodePC
-;	sub cycles,cycles,#6*3*CYCLE	;not implemented yet in PocketNES.
-;	b checkirqdisable				;Fixes ???
-	fetch 6
+	sub cycles,cycles,#6*3*CYCLE	;???
+	b check_irq			;Fixes Dragon Quest
+;	fetch 6
 ;----------------------------------------------------------------------------
 _41;   EOR ($nn,X)
 ;----------------------------------------------------------------------------
@@ -409,9 +430,9 @@ _56;   LSR $nn,X
 _58;   CLI
 ;----------------------------------------------------------------------------
 	bic cycles,cycles,#CYC_I
-;	sub cycles,cycles,#2*3*CYCLE	;not implemented yet on PocketNES
-;	b checkirqs						;Fixes ???
-	fetch 2
+	sub cycles,cycles,#2*3*CYCLE	;???
+	b check_irq			;Fixes Dragon Quest
+;	fetch 2
 ;----------------------------------------------------------------------------
 _59;   EOR $nnnn,Y
 ;----------------------------------------------------------------------------
@@ -891,7 +912,7 @@ _D0y;   BNE *
 	ldrsb r0,[m6502_pc],#1
 	add m6502_pc,m6502_pc,r0
 	cmp r0,#-4						;speed hack for Dragon Warrior?.
-	andcs cycles,cycles,#CYC_MASK	;speed hack 
+	andeq cycles,cycles,#CYC_MASK	;speed hack 
 	fetch 3
 ;----------------------------------------------------------------------------
 _D1;   CMP ($nn),Y
@@ -1018,7 +1039,7 @@ _F0y;   BEQ *
 	ldrsb r0,[m6502_pc],#1
 	add m6502_pc,m6502_pc,r0
 	cmp r0,#-4						;speed hack for Ballon Fight.
-	andcs cycles,cycles,#CYC_MASK	;speed hack 
+	andeq cycles,cycles,#CYC_MASK	;speed hack 
 	fetch 3
 nobranch
 	add m6502_pc,m6502_pc,#1
@@ -1065,7 +1086,7 @@ _FE;   INC $nnnn,X
 	opINC
 	fetch 7
 ;----------------------------------------------------------------------------
-run	;r0=0 to return after frame
+run_core	;r0=0 to return after frame
 ;----------------------------------------------------------------------------
 	mov r1,#0
 	strb r1,novblankwait
@@ -1157,26 +1178,32 @@ waitformulti
 	ldrne r1,=quicksave
 	bxne r1
 line0x
-	bl refreshNESjoypads		;Z=1 if communication ok
-	bne waitformulti			;waiting on other GBA..
+	bl refreshNESjoypads	;Z=1 if communication ok
+	bne waitformulti		;waiting on other GBA..
 
 	ldr r0,AGBjoypad
-	ldr r2,fiveminutes			;sleep after 5/10/30 minutes of inactivity
-	cmp r0,#0					;(left out of the loop so waiting on multi-link
-	ldrne r2,sleeptime			;doesn't accelerate time)
+	ldr r2,fiveminutes		;sleep after 5/10/30 minutes of inactivity
+	cmp r0,#0				;(left out of the loop so waiting on multi-link
+	ldrne r2,sleeptime		;doesn't accelerate time)
 	subs r2,r2,#1
 	str r2,fiveminutes
-	bleq suspend
+	bleq_long suspend
 
 	mov r1,#0
-	strb r1,ppustat				;vbl clear, sprite0 clear
-	str r1,scanline				;reset scanline count
+	strb r1,ppustat			;vbl clear, sprite0 clear
+	str r1,scanline			;reset scanline count
 
-	bl newframe					;display update
-	bl updatesound
+	bl newframe				;display update
+	bl_long updatesound
+
+	[ CHEATFINDER
+	ldr r0,=do_cheats
+	mov lr,pc
+	bx r0
+	]
 
 ;-----------------------------------
-;	ldr r0,=0x04000006			;to write out the scanline
+;	ldr r0,=0x04000006	;to write out the scanline
 ;	ldrh r0,[r0]
 ;	mov r1,#19
 ;	bl debug_
@@ -1273,6 +1300,21 @@ line242NMI ;---------------------------
 	mov r1,#19
 	bl debug_
  ]
+
+;frame irq
+	ldrb r0,apu_4017
+	cmp r0,#0x00
+	bne noframeirq
+	mov r0,#0x40
+	strb r0,doframeirq
+	tst cycles,#CYC_I
+	bne noframeirq
+	sub cycles,cycles,#6*3*CYCLE
+	ldr r12,=IRQ_VECTOR
+	bl Vec6502
+
+noframeirq
+
 	ldrb r0,ppuctrl0
 	tst r0,#0x80
 	beq %F0			;NMI?
@@ -1306,7 +1348,7 @@ line242_to_end ;------------------------
 	ldr pc,scanlinehook
 
 pcm_scanlinehook
-	ldr addy,=pcmctrl
+	ldr addy,=_pcmctrl
 	ldr r2,[addy]
 	tst r2,#0x1000			;Is PCM on?
 	beq hk0
@@ -1327,10 +1369,25 @@ pcm_scanlinehook
 	bic r2,r2,#0x1000		;clear channel 5
 	str r2,[addy]
 	bne CheckI
+
+check_irq
+	;first verify ints are enabled
+	tst cycles,#CYC_I
+	bne default_scanlinehook
+
+	;frame irq?
+	ldrb r0,doframeirq
+	;dpcm irq?
+	ldr addy,=_pcmctrl
+	ldrb r1,[addy,#1]
+	and r1,r1,#0x80		;only read pcm IRQ
+	orrs r0,r0,r1
+
+	bne irq6502
+	;code continues to the fetch 0 below
 hk0
 default_scanlinehook
 	fetch 0
-
 
 ;----------------------------------------------------------
 CheckI								;Check Interrupt Disable
@@ -1372,6 +1429,9 @@ novblankwait DCB 0
 PAL60 DCB 0
 ;----------------------------------------------------------------------------
 	AREA rom_code, CODE, READONLY
+run
+	ldr pc,=run_core
+
 ;----------------------------------------------------------------------------
 _xx;	???					;invalid opcode
 ;----------------------------------------------------------------------------
@@ -1382,6 +1442,41 @@ _xx;	???					;invalid opcode
 	]
 	fetch 2
 ;----------------------------------------------------------------------------
+_D0z;   BNE
+;----------------------------------------------------------------------------
+	ldr r1,=SPEEDHACK_FIND_BNE_BUF
+	ldr r2,=_D0
+
+_find_speedhack_thingy
+	ldrsb r0,[m6502_pc]
+
+	;between -33 and -2
+	cmp r0,#-33
+	bxlt r2
+	cmp r0,#-2
+	bxgt r2
+	rsb r0,r0,#0
+	sub r0,r0,#2
+	mov r0,r0,lsl#2
+	add r0,r0,r1
+	ldr r1,[r0]
+	add r1,r1,#1
+	str r1,[r0]
+	bx r2
+;----------------------------------------------------------------------------
+_10z;   BPL
+;----------------------------------------------------------------------------
+	ldr r1,=SPEEDHACK_FIND_BPL_BUF
+	ldr r2,=_10
+	b _find_speedhack_thingy
+;----------------------------------------------------------------------------
+_F0z;   BEQ
+;----------------------------------------------------------------------------
+	ldr r1,=SPEEDHACK_FIND_BEQ_BUF
+	ldr r2,=_F0
+	b _find_speedhack_thingy
+
+
 
 ntsc_pal_reset
 ;---NTSC/PAL
@@ -1399,10 +1494,13 @@ ntsc_pal_reset
 	bx lr
 
 cpuhack_reset
+	adr r1,normalops
 	ldr r0,emuflags
 	tst r0,#NOCPUHACK	;load opcode set
-	adr r1,jmpops
-	adrne r1,normalops
+	adreq r1,jmpops
+	ldrb r0,hackflags
+	cmp r0,#FindingHacks
+	adreq r1,branchops_for_finder
 	adr r2,opindex
 	mov r3,#8
 nr0	ldr r0,[r1,r3,lsl#2]
@@ -1412,41 +1510,25 @@ nr0	ldr r0,[r1,r3,lsl#2]
 	bpl nr0
 
 	ldrb r0,hackflags
-	cmp r0,#NoHacks		;branch hacks?
+	tst r0,#0xE0
 	bxeq lr				;No, exit.
 
+	
 	mov r3,r0,lsr#5		;which opcode?
 	adr r1,branchops
 	ldr r12,[r2,r3,lsl#2]
 	ldr r2,[r1,r3,lsl#2]
 	str r2,[r12]
 
-	and r3,r0,#0xF		;how long branches?
-	adr r1,Hacklist1
-	ldr r3,[r1,r3,lsl#2]
-	str r3,[r2,#5*4]
+	ldrb r0,hackflags2	;how long branches?
+	strb r0,[r2,#5*4]
 
 	bx lr
 
-Hacklist1
-	cmp r0,#-16
-	cmp r0,#-17
-	cmp r0,#-18
-	cmp r0,#-3
-	cmp r0,#-4
-	cmp r0,#-5
-	cmp r0,#-6
-	cmp r0,#-7
-	cmp r0,#-8
-	cmp r0,#-9
-	cmp r0,#-10
-	cmp r0,#-11
-	cmp r0,#-12
-	cmp r0,#-13
-	cmp r0,#-14
-	cmp r0,#-15
 branchops
 	DCD _10y,_30x,_50x,_70x,_90x,_B0x,_D0y,_F0y,_4Cx
+branchops_for_finder
+	DCD _10z,_30x,_50x,_70x,_90x,_B0x,_D0z,_F0z,_4Cx
 normalops
 	DCD _10,_30,_50,_70,_90,_B0,_D0,_F0,_4C
 jmpops
@@ -1454,6 +1536,7 @@ jmpops
 opindex
 	DCD op_table+0x10*4,op_table+0x30*4,op_table+0x50*4,op_table+0x70*4,op_table+0x90*4
 	DCD op_table+0xB0*4,op_table+0xD0*4,op_table+0xF0*4,op_table+0x4C*4
+
 ;----------------------------------------------------------------------------
 CPU_reset	;called by loadcart (r0-r9 are free to use)
 ;----------------------------------------------------------------------------
@@ -1483,15 +1566,19 @@ CPU_reset	;called by loadcart (r0-r9 are free to use)
 
 	;(clear irq/nmi/res source)...
 
+	mov r0,#0x40
+	strb r0,apu_4017
+	mov r0,#0
+	strb r0,doframeirq
+
 	ldr r12,=RES_VECTOR
-	bl Vec6502
+	bl_long Vec6502
 
 	adr r0,cpuregs
 	stmia r0,{m6502_nz-m6502_pc}
 	ldr pc,[sp],#4
 ;----------------------------------------------------------
 	AREA wram_globals0, CODE, READWRITE
-
 op_table
 	DCD _00,_01,_xx,_xx,_xx,_05,_06,_xx,_08,_09,_0A,_xx,_xx,_0D,_0E,_xx
 	DCD _10,_11,_xx,_xx,_xx,_15,_16,_xx,_18,_19,_xx,_xx,_xx,_1D,_1E,_xx
@@ -1509,6 +1596,8 @@ op_table
 	DCD _D0,_D1,_xx,_xx,_xx,_D5,_D6,_xx,_D8,_D9,_xx,_xx,_xx,_DD,_DE,_xx
 	DCD _E0,_E1,_xx,_xx,_E4,_E5,_E6,_xx,_E8,_E9,_EA,_xx,_EC,_ED,_EE,_xx
 	DCD _F0,_F1,_xx,_xx,_xx,_F5,_F6,_xx,_F8,_F9,_xx,_xx,_xx,_FD,_FE,_xx
+	EXPORT g_readmem_tbl
+g_readmem_tbl
   ;readmem_tbl
 	DCD ram_R	;$0000
 	DCD PPU_R	;$2000
@@ -1518,6 +1607,7 @@ op_table
 	DCD rom_RA0	;$A000
 	DCD rom_RC0	;$C000
 	DCD rom_RE0	;$E000
+g_writemem_tbl
   ;writemem_tbl
 	DCD ram_W	;$0000
 	DCD PPU_W	;$2000
@@ -1527,6 +1617,7 @@ op_table
 	DCD void	;$A000
 	DCD void	;$C000
 	DCD void	;$E000
+g_memmap_tbl
    ;memmap_tbl
 	DCD NES_RAM		;$0000   0000-7fff
 	DCD NES_RAM		;$2000    should
@@ -1536,8 +1627,12 @@ rommap	% 4*4			;$8000-FFFF
 
 cpustate
 	;group these together for save/loadstate
-	% 7*4 ;cpuregs (nz,c,a,x,y,cycles,pc)
+	% 6*4 ;cpuregs (nz,c,a,x,y,cycles)
+g_m6502_pc
+	DCD 0 ;m6502_pc
+g_m6502_s
 	DCD 0 ;m6502_s:
+g_lastbank
 	DCD 0 ;lastbank: last memmap added to PC (used to calculate current PC)
 
 	DCD 0 ;nexttimeout:  jump here when cycles runs out

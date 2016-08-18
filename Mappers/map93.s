@@ -18,9 +18,9 @@ write93
 ;-------------------------------------------------------
 	stmfd sp!,{r0,lr}
 	tst r0,#1
-	bl mirror2V_
+	bl_long mirror2V_
 	ldmfd sp!,{r0,lr}
 	mov r0,r0,lsr#4
-	b map89AB_
+	b_long map89AB_
 ;-------------------------------------------------------
 	END

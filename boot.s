@@ -68,6 +68,8 @@ __main
 	adr lr,_3
 	tst lr,#0x8000000
 	beq _3				;running from cart?
+ [ VERSION_IN_ROM
+ |
 		add r6,r6,#0x6000000		;textstart=8xxxxxx
 		add r5,r5,#0x6000000		;RW code ptr=8xxxxxx
 
@@ -85,6 +87,7 @@ _2		cmp r1,r3
 		strcc r2, [r1], #4
 		bcc _2
 		sub pc,lr,#0x6000000	;jump to exram copy
+ ]
 _3
 	LDR	r1, =|Image$$RW$$Base|
 	LDR	r3, =|Image$$ZI$$Base| ; Zero init base => top of initialized data
@@ -103,7 +106,7 @@ _1	CMP	r3, r1 ; Zero init
 	tst lr,#0x8000000
 	bne _4					;running from cart?
 	ldr r0,=|Image$$RO$$Limit|
-	mov r3,#0x30000			;up to 192kbyte
+	mov r3,#0x36000			;up to 216kbyte
 	add r3,r3,#0x90			;+headers (Adv+NES)
 	mov r1,r0
 _loop

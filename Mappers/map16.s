@@ -8,6 +8,7 @@
 	INCLUDE 6502mac.h
 
 	EXPORT mapper16init
+	EXPORT mapper_16_hook
 
 counter EQU mapperdata+0
 latch EQU mapperdata+4
@@ -23,7 +24,7 @@ mapper16init;		Bandai
 	ldr r1,mapper16init
 	str r1,writemem_tbl+12
 
-	ldr r0,=hook
+	ldr r0,=mapper_16_hook
 	str r0,scanlinehook
 
 	mov pc,lr
@@ -56,7 +57,7 @@ wC ;---------------------------
 
 tbl DCD map89AB_,mirrorKonami_,wA,wB,wC,void,void,void
 ;-------------------------------------------------------
-hook
+mapper_16_hook
 ;------------------------------------------------------
 	ldrb r0,enable
 	cmp r0,#0
@@ -66,7 +67,7 @@ hook
 	subs r0,r0,#113
 	str r0,counter
 ;	bcc irq6502
-	bcc CheckI
+	bcc_long CheckI
 h1
 	fetch 0
 ;-------------------------------------------------------

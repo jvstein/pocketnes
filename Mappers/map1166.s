@@ -32,17 +32,17 @@ mapper66init
 write11
 ;------------------------------
 	stmfd sp!,{r0,lr}
-	bl map89ABCDEF_
+	bl_long map89ABCDEF_
 	ldmfd sp!,{r0,lr}
 	mov r0,r0,lsr#4
-	b chr01234567_
+	b_long chr01234567_
 ;------------------------------
 write66
 ;------------------------------
 	stmfd sp!,{r0,lr}
-	bl chr01234567_
+	bl_long chr01234567_
 	ldmfd sp!,{r0,lr}
 	mov r0,r0,lsr#4
-	b map89ABCDEF_
+	b_long map89ABCDEF_
 ;----------------------------------------------------------------------------
 	END

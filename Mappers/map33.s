@@ -8,6 +8,7 @@
 	INCLUDE 6502mac.h
 
 	EXPORT mapper33init
+	EXPORT mapper_33_hook
 
 irqen EQU mapperdata+0
 counter EQU mapperdata+3
@@ -18,7 +19,7 @@ mapper33init	;Taito... Insector X
 ;----------------------------------------------------------------------------
 	DCD write8000,writeA000,writeC000,writeE000
 
-	adr r0,hook
+	adr r0,mapper_33_hook
 	str r0,scanlinehook
 
 	mov pc,lr
@@ -31,12 +32,12 @@ write8000
 w80
 	ldr r1,mswitch
 	tst r1,#0xFF
-	bne map89_
+	bne_long map89_
 	stmfd sp!,{r0,lr}
 	tst r0,#0x40
-	bl mirror2V_
+	bl_long mirror2V_
 	ldmfd sp!,{r0,lr}
-	b map89_
+	b_long map89_
 
 write8tbl DCD w80,mapAB_,chr01_,chr23_
 ;-------------------------------------------------------
@@ -66,10 +67,10 @@ writeE000
 	mov r1,#1
 	strb r1,mswitch
 	tst r0,#0x40
-	b mirror2V_
+	b_long mirror2V_
 
 ;-------------------------------------------------------
-hook
+mapper_33_hook
 ;------------------------------------------------------
 	ldrb r0,ppuctrl1
 	tst r0,#0x18		;no sprite/BG enable?
@@ -93,7 +94,7 @@ hook
 	mov r0,#0
 	str r0,irqen	;copy latch to counter
 ;	b irq6502
-	b CheckI
+	b_long CheckI
 h0
 	str r0,irqen
 h1

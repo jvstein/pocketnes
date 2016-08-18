@@ -8,6 +8,7 @@
 	INCLUDE 6502mac.h
 
 	EXPORT mapper67init
+	EXPORT map67_IRQ_Hook
 
 countdown EQU mapperdata+0
 irqen EQU mapperdata+4
@@ -27,16 +28,16 @@ write0		;8800,9800
 	tst addy,#0x0800
 	moveq pc,lr
 	tst addy,#0x1000
-	beq chr01_
-	b   chr23_
+	beq_long chr01_
+	b_long chr23_
 ;----------------------------------------------------------------------------
 write1		;A800-B800
 ;----------------------------------------------------------------------------
 	tst addy,#0x0800
 	moveq pc,lr
 	tst addy,#0x1000
-	beq chr45_
-	b   chr67_
+	beq_long chr45_
+	b_long chr67_
 ;----------------------------------------------------------------------------
 write2		;C000,C800,D800
 ;----------------------------------------------------------------------------
@@ -59,8 +60,8 @@ write3		;E800,F800
 	tst addy,#0x0800
 	moveq pc,lr
 	tst addy,#0x1000
-	bne map89AB_
-	b mirrorKonami_
+	bne_long map89AB_
+	b_long mirrorKonami_
 ;----------------------------------------------------------------------------
 map67_IRQ_Hook
 ;----------------------------------------------------------------------------
@@ -78,7 +79,7 @@ map67_IRQ_Hook
 	mov r0,r0,lsr#16
 	str r0,countdown
 ;	b irq6502
-	b CheckI
+	b_long CheckI
 hk0
 	fetch 0
 ;----------------------------------------------------------------------------

@@ -18,15 +18,15 @@ mapper22init	;Konami, Twin Bee 3...
 write8000
 ;-------------------------------------------------------
 	tst addy,#0x1000
-	beq map89_
+	beq_long map89_
 write9000
-	bne mirrorKonami_
+	bne_long mirrorKonami_
 
 ;-------------------------------------------------------
 writeA000
 ;-------------------------------------------------------
 	tst addy,#0x1000
-	beq mapAB_
+	beq_long mapAB_
 
 writeC000	;addy=B/C/D/Exxx
 ;-------------------------------------------------------

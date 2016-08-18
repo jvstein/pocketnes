@@ -29,14 +29,14 @@ write8000
 	bge write9000
 	ldrb r1,k4sel
 	ands r1,r1,#2
-	beq map89_
-	bne mapCD_
+	beq_long map89_
+	bne_long mapCD_
 
 write9000
 	orr addy,addy,addy,lsr#4		;0x55=1, 0xAA=2
 	orr addy,addy,addy,lsr#2
 	ands addy,addy,#3
-	beq mirrorKonami_
+	beq_long mirrorKonami_
 w90_
 	strb r0,k4sel
 	mov pc,lr
@@ -45,7 +45,7 @@ w90_
 writeA000
 ;-------------------------------------------------------
 	cmp addy,#0xb000
-	bmi mapAB_
+	bmi_long mapAB_
 writeC000	;addy=B/C/D/Exxx
 ;-------------------------------------------------------
 	and r0,r0,#0x0f

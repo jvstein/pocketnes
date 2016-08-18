@@ -8,6 +8,7 @@
 	INCLUDE 6502mac.h
 
 	EXPORT mapper65init
+	EXPORT mapper_65_hook
 
 latch EQU mapperdata+0
 counter EQU mapperdata+4
@@ -18,7 +19,7 @@ mapper65init	;Irem, Spartan X 2...
 ;----------------------------------------------------------------------------
 	DCD write8000,writeA000,writeC000,void
 
-	adr r0,hook
+	adr r0,mapper_65_hook
 	str r0,scanlinehook
 
 	mov pc,lr
@@ -26,7 +27,7 @@ mapper65init	;Irem, Spartan X 2...
 write8000
 ;-------------------------------------------------------
 	tst addy,#0x1000
-	beq map89_
+	beq_long map89_
 
 write9000
 	and addy,addy,#7
@@ -38,12 +39,12 @@ w90
 	cmp r1,#0
 	movne pc,lr
 	tst r0,#0x40
-	b mirror2H_
+	b_long mirror2H_
 w91
 	mov r1,#1
 	strb r1,mswitch
 	tst r0,#0x80
-	b mirror2V_
+	b_long mirror2V_
 w93
 	and r0,r0,#0x80
 	strb r0,irqen
@@ -64,7 +65,7 @@ write9tbl DCD w90,w91,void,w93,w94,w95,w96,void
 writeA000
 ;-------------------------------------------------------
 	tst addy,#0x1000
-	beq mapAB_
+	beq_long mapAB_
 writeB000
 	and addy,addy,#7
 	ldr r1,=writeCHRTBL
@@ -74,10 +75,10 @@ writeB000
 writeC000
 ;-------------------------------------------------------
 	cmp addy,#0xC000
-	beq mapCD_
+	beq_long mapCD_
 	mov pc,lr
 ;-------------------------------------------------------
-hook
+mapper_65_hook
 ;------------------------------------------------------
 	ldrb r0,irqen
 	cmp r0,#0	;timer active?
@@ -91,7 +92,7 @@ hook
 	strb r0,irqen
 	str r0,counter	;clear counter and IRQenable.
 ;	b irq6502
-	b CheckI
+	b_long CheckI
 h0
 	str r0,counter
 h1

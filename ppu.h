@@ -4,6 +4,7 @@
 	IMPORT PPU_W
 	IMPORT agb_nt_map
 	IMPORT VRAM_chr
+	IMPORT VRAM_chr2
 	IMPORT vram_map
 	IMPORT vram_write_tbl
 	IMPORT debug_
@@ -15,4 +16,6 @@
 	IMPORT oambuffer
 	IMPORT newX
 	IMPORT ctrl1_W
+	IMPORT scrollbuff
+	IMPORT dmascrollbuff
 	END

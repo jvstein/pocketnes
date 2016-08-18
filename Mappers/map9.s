@@ -9,6 +9,7 @@
 	EXPORT mapper9init
 	EXPORT mapper10init
 	EXPORT mapper9BGcheck
+	EXPORT mapper_9_hook
 
 reg0 EQU mapperdata+0
 reg1 EQU mapperdata+1
@@ -23,28 +24,28 @@ map10start
 	bic r0,r0,#SCREEN4	;(many punchout roms have bad headers)
 	strb r0,cartflags
 
-	ldr r0,=hook
+	ldr r0,=mapper_9_hook
 	str r0,scanlinehook
 
 	mov r0,#-1
-	b map89ABCDEF_		;everything to last bank
+	b_long map89ABCDEF_		;everything to last bank
 ;----------------------------------------------------------------------------
 mapper10init
 ;----------------------------------------------------------------------------
 	DCD empty_W,a000_10,c000,e000
-	b map10start
+	b_long map10start
 ;----------------------------------------------------------------------------
 	AREA wram_code3, CODE, READWRITE
 ;----------------------------------------------------------------------------
 ;------------------------------
 a000_10
 	tst addy,#0x1000
-	beq map89AB_
+	beq_long map89AB_
 	b b000
 ;------------------------------
 a000_9
 	tst addy,#0x1000
-	beq map89_
+	beq_long map89_
 b000 ;-------------------------
 	strb r0,reg0
 	mov pc,lr
@@ -53,7 +54,7 @@ c000 ;-------------------------
 	bne d000
 
 	strb r0,reg1
-	b chr0123_
+	b_long chr0123_
 	;mov pc,lr
 d000 ;-------------------------
 	strb r0,reg2
@@ -66,9 +67,9 @@ e000 ;-------------------------
 	mov pc,lr
 f000 ;-------------------------
 	tst r0,#1
-	b mirror2V_
+	b_long mirror2V_
 ;------------------------------
-hook
+mapper_9_hook
 ;------------------------------
 	ldr r0,scanline
 	tst r0,#7
@@ -82,7 +83,7 @@ hook
 	cmp r0,#0xfd
 	ldreqb r0,reg2
 	ldrneb r0,reg3
-	bl chr4567_
+	bl_long chr4567_
 h9
 	fetch 0
 ;------------------------------

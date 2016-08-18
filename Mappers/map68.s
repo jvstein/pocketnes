@@ -16,31 +16,31 @@ mapper68init	;Sunsoft, After Burner...
 write0
 ;----------------------------------------------
 	tst addy,#0x1000
-	bne chr23_
-	b chr01_
+	bne_long chr23_
+	b_long chr01_
 ;----------------------------------------------
 write1
 ;----------------------------------------------
 	tst addy,#0x1000
-	bne chr67_
-	b chr45_
+	bne_long chr67_
+	b_long chr45_
 ;----------------------------------------------
 write2
 ;----------------------------------------------
-	b empty_W
+	b_long empty_W
 ;	tst addy,#0x1000
-;	bne chrAB_
-;	b chr89_
+;	bne_long chrAB_
+;	b_long chr89_
 ;----------------------------------------------
 write3
 ;----------------------------------------------
 	tst addy,#0x1000
-	bne map89AB_
+	bne_long map89AB_
 
 	tst r0,#0x10
 	bne setNTmanualy
-	b mirrorKonami_
+	b_long mirrorKonami_
 setNTmanualy
-	b empty_W		;fix this some day
+	b_long empty_W		;fix this some day
 ;----------------------------------------------
 	END

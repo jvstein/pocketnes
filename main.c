@@ -2,56 +2,32 @@
 #include <string.h>
 #include "gba.h"
 #include "minilzo.107/minilzo.h"
-
-extern u32 g_emuflags;			//from cart.s
-extern u32 joycfg;				//from io.s
-extern u32 font;				//from boot.s
-extern u32 fontpal;				//from boot.s
-extern u32 *vblankfptr;			//from ppu.s
-extern u32 vbldummy;			//from ppu.s
-extern u32 vblankinterrupt;		//from ppu.s
-extern u32 AGBinput;			//from ppu.s
-extern u32 EMUinput;
-       u32 oldinput;
-extern u8 autostate;			//from ui.c
+#include "cheat.h"
+#include "asmcalls.h"
+#include "main.h"
+#include "ui.h"
+#include "sram.h"
 
 extern romheader mb_header;
-const PALTIMING=4;				//Also in equates.h
 
-//asm calls
-void loadcart(int,int);			//from cart.s
-void run(int);
-void PPU_init(void);
-void resetSIO(u32);				//io.s
-void vbaprint(char *text);		//io.s
-void LZ77UnCompVram(u32 *source,u16 *destination);		//io.s
-void waitframe(void);			//io.s
-int CheckGBAVersion(void);		//io.s
-
-void cls(int);
-void rommenu(void);
-int drawmenu(int);
-int getinput(void);
-void splash(void);
-void drawtext(int,char*,int);
-void setdarknessgs(int dark);
-void setbrightnessall(int light);
-void readconfig(void);		//sram.c
-void quickload(void);
-void backup_nes_sram(void);
-void get_saved_sram(void);	//sram.c
-
-const unsigned __fp_status_arm=0x40070000;
+//const unsigned __fp_status_arm=0x40070000;
 u8 *textstart;//points to first NES rom (initialized by boot.s)
 int roms;//total number of roms
+int selectedrom=0;
+u32 max_multiboot_size;
+u32 oldinput;
 
 char pogoshell_romname[32];	//keep track of rom name (for state saving, etc)
 char rtc=0;
 char pogoshell=0;
 char gameboyplayer=0;
 char gbaversion;
-
 int ne=0x454e;
+
+extern u8* BUFFER1;
+extern u8* BUFFER2;
+extern u8* BUFFER3;
+
 void C_entry() {
 	int i;
 	vu16 *timeregs=(u16*)0x080000c8;
@@ -61,7 +37,14 @@ void C_entry() {
 	if(*timeregs & 1) rtc=1;
 	gbaversion=CheckGBAVersion();
 	vblankfptr=&vbldummy;
+	memset((u32*)0x6000000,0,0x18000);  //clear vram (fixes graphics junk)
 	PPU_init();
+
+	BUFFER1 = ((u8*)(&Image$$RO$$Limit));
+	if (BUFFER1>=(u8*)0x08000000) BUFFER1=(u8*)0x02000000;
+	BUFFER2 = BUFFER1+0x10000;
+	BUFFER3 = BUFFER2+0x20000;
+
 
 	if(pogoshell){
 		u32 *magptr=(u32*)0x08000000;
@@ -124,6 +107,7 @@ void C_entry() {
 		if(!i)i=1;					//Stop PocketNES from crashing if there are no ROMs
 		roms=i;
 	}
+
 	if(REG_DISPCNT==FORCE_BLANK)	//is screen OFF?
 		REG_DISPCNT=0;				//screen ON
 	*MEM_PALETTE=0x7FFF;			//white background
@@ -171,7 +155,11 @@ void rommenu(void) {
 	REG_BG2HOFS=0x0100;		//Screen left
 	REG_BG2CNT=0x4600;	//16color 512x256 CHRbase0 SCRbase6 Priority0
 	setdarknessgs(16);
-	backup_nes_sram();
+	if (!backup_nes_sram(0))
+	{
+		ui();
+		backup_nes_sram(0);
+	}
 	resetSIO((joycfg&~0xff000000) + 0x20000000);//back to 1P
 
 	if(pogoshell)
@@ -181,7 +169,6 @@ void rommenu(void) {
 	}
 	else
 	{
-		static int selectedrom=0;
 		int i,lastselected=-1;
 		int key;
 
@@ -227,7 +214,6 @@ void rommenu(void) {
 		} while(romz>1 && !(key&(A_BTN+B_BTN+START)));
 		for(i=1;i<9;i++)
 		{
-			waitframe();
 			setdarknessgs(8-i);		//Lighten screen
 			REG_BG2HOFS=i*32;		//Move screen left
 			run(0);
@@ -238,7 +224,10 @@ void rommenu(void) {
 			run(0);
 		}
 	}
-	if(autostate)quickload();
+	if(autostate&1)quickload();
+#if CHEATFINDER
+	cheatload();
+#endif
 	run(1);
 }
 
@@ -246,7 +235,9 @@ void rommenu(void) {
 u8 *findrom(int n) {
 	u8 *p=textstart;
 	while(!pogoshell && n--)
+	{
 		p+=*(u32*)(p+32)+sizeof(romheader);
+	}
 	return p;
 }
 
@@ -274,9 +265,13 @@ int drawmenu(int sel) {
 		p+=*(u32*)(p+32)+48;
 	}
 	if(roms>20)
+	{
 		REG_BG2VOFS=topline%8;
+	}
 	else
+	{
 		REG_BG2VOFS=176+roms*4;
+	}
 	return romflags;
 }
 
@@ -300,7 +295,8 @@ int getinput() {
 }
 
 
-void cls(int chrmap) {
+void cls(int chrmap)
+{
 	int i=0,len=0x200;
 	u32 *scr=(u32*)SCREENBASE;
 	if(chrmap>=2)

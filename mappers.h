@@ -23,6 +23,7 @@
 	IMPORT mapper33init
 	IMPORT mapper34init
 	IMPORT mapper40init
+	IMPORT mapper42init
 	IMPORT mapper64init
 	IMPORT mapper65init
 	IMPORT mapper66init
@@ -33,6 +34,7 @@
 	IMPORT mapper71init
 	IMPORT mapper72init
 	IMPORT mapper73init
+	IMPORT mapper74init
 	IMPORT mapper75init
 	IMPORT mapper76init
 	IMPORT mapper77init
@@ -48,12 +50,17 @@
 	IMPORT mapper97init
 	IMPORT mapper99init
 	IMPORT mapper105init
+	IMPORT mapper118init
+	IMPORT mapper119init
+	IMPORT mapper140init
 	IMPORT mapper151init
 	IMPORT mapper152init
 	IMPORT mapper180init
 	IMPORT mapper184init
 	IMPORT mapper228init
 	IMPORT mapper232init
+	IMPORT mapper245init
+	IMPORT mapper249init
 
 	IMPORT mapper9BGcheck
 	END

@@ -8,6 +8,7 @@
 	INCLUDE io.h
 
 	EXPORT mapper5init
+	EXPORT mapper_5_hook
 
 counter EQU mapperdata+0
 enable EQU mapperdata+1
@@ -58,7 +59,7 @@ mapper5init
 	strb r0,prgpage2
 	strb r0,prgpage3
 
-	adr r0,hook
+	adr r0,mapper_5_hook
 	str r0,scanlinehook
 
 	mov pc,lr
@@ -66,7 +67,7 @@ mapper5init
 write0
 ;-------------------------------------------------------
 	cmp addy,#0x5000
-	blo IO_W
+	blo_long IO_W
 	cmp addy,#0x5100
 	blo map5Sound
 	cmp addy,#0x5200
@@ -101,20 +102,20 @@ _01
 _05
 	strb r0,m5mirror
 	cmp r0,#0x55
-	beq mirror5_1
+	beq_long mirror5_1
 	cmp r0,#0
-	beq mirror5_1
+	beq_long mirror5_1
 	cmp r0,#0xE4
-	beq mirror4_
+	beq_long mirror4_
 	eor r1,r0,r0,lsr#4
 	ands r1,r1,#0x0C
-	b mirror2V_
-;	b mirrorKonami_
+	b_long mirror2V_
+;	b_long mirrorKonami_
 
 
 mirror5_1
 	cmp r0,#0
-	b mirror1_
+	b_long mirror1_
 
 _14
 _15
@@ -129,39 +130,39 @@ mmc5prg
 	bne not0
 	ldrb r0,prgpage1
 	mov r0,r0,lsr#2
-	b map89ABCDEF_
+	b_long map89ABCDEF_
 not0
 	str lr,[sp,#-4]!
 	cmp r1,#0x01
 	bne not1
 	ldrb r0,prgpage1
 	mov r0,r0,lsr#1
-	bl map89AB_
+	bl_long map89AB_
 	ldrb r0,prgpage3
 	mov r0,r0,lsr#1
 	ldr lr,[sp],#4
-	b mapCDEF_
+	b_long mapCDEF_
 not1
 	cmp r1,#0x02
 	bne not2
 	ldrb r0,prgpage1
 	mov r0,r0,lsr#1
-	bl map89AB_
+	bl_long map89AB_
 	ldrb r0,prgpage2
-	bl mapCD_
+	bl_long mapCD_
 	ldrb r0,prgpage3
 	ldr lr,[sp],#4
-	b mapEF_
+	b_long mapEF_
 not2
 	ldrb r0,prgpage0
-	bl map89_
+	bl_long map89_
 	ldrb r0,prgpage1
-	bl mapAB_
+	bl_long mapAB_
 	ldrb r0,prgpage2
-	bl mapCD_
+	bl_long mapCD_
 	ldrb r0,prgpage3
 	ldr lr,[sp],#4
-	b mapEF_
+	b_long mapEF_
 
 _20				; For sprites.
 _21
@@ -183,54 +184,54 @@ mmc5chra
 	bne notch0
 	ldrb r0,chrpage7
 ;	mov r0,r0,lsr#3
-	b chr01234567_
+	b_long chr01234567_
 notch0
 	str lr,[sp,#-4]!
 	cmp r1,#0x01
 	bne notch1
 	ldrb r0,chrpage3
 ;	mov r0,r0,lsr#2
-	bl chr0123_
+	bl_long chr0123_
 	ldr lr,[sp],#4
 	ldrb r0,chrpage7
 ;	mov r0,r0,lsr#2
-;	b chr4567_
+;	b_long chr4567_
 	mov pc,lr		; get out?
 notch1
 	cmp r1,#0x02
 	bne notch2
 	ldrb r0,chrpage1
 ;	mov r0,r0,lsr#1
-	bl chr01_
+	bl_long chr01_
 	ldrb r0,chrpage3
 ;	mov r0,r0,lsr#1
-	bl chr23_
+	bl_long chr23_
 	ldrb r0,chrpage5
 ;	mov r0,r0,lsr#1
-;	bl chr45_
+;	bl_long chr45_
 	ldr lr,[sp],#4
 	ldrb r0,chrpage7
 ;	mov r0,r0,lsr#1
-;	b chr67_
+;	b_long chr67_
 	mov pc,lr		; get out?
 notch2
 	ldrb r0,chrpage0
-	bl chr0_
+	bl_long chr0_
 	ldrb r0,chrpage1
-	bl chr1_
+	bl_long chr1_
 	ldrb r0,chrpage2
-	bl chr2_
+	bl_long chr2_
 	ldrb r0,chrpage3
-	bl chr3_
+	bl_long chr3_
 	ldrb r0,chrpage4
-;	bl chr4_
+;	bl_long chr4_
 	ldrb r0,chrpage5
-;	bl chr5_
+;	bl_long chr5_
 	ldrb r0,chrpage6
-;	bl chr6_
+;	bl_long chr6_
 	ldr lr,[sp],#4
 	ldrb r0,chrpage7
-;	b chr7_
+;	b_long chr7_
 	mov pc,lr		; get out?
 
 _28				; For background.
@@ -249,54 +250,54 @@ mmc5chrb
 	bne notchb0
 	ldrb r0,chrpage11
 	mov r0,r0,lsr#3
-	b chr01234567_
+	b_long chr01234567_
 notchb0
 	str lr,[sp,#-4]!
 	cmp r1,#0x01
 	bne notchb1
 	ldrb r0,chrpage11
 ;	mov r0,r0,lsr#2
-;	bl chr0123_
+;	bl_long chr0123_
 	ldr lr,[sp],#4
 	ldrb r0,chrpage11
 	mov r0,r0,lsr#2
-	b chr4567_
+	b_long chr4567_
 	mov pc,lr
 notchb1
 	cmp r1,#0x02
 	bne notchb2
 	ldrb r0,chrpage9
 ;	mov r0,r0,lsr#1
-;	bl chr01_
+;	bl_long chr01_
 	ldrb r0,chrpage11
 ;	mov r0,r0,lsr#1
-;	bl chr23_
+;	bl_long chr23_
 	ldrb r0,chrpage9
 	mov r0,r0,lsr#1
-	bl chr45_
+	bl_long chr45_
 	ldr lr,[sp],#4
 	ldrb r0,chrpage11
 	mov r0,r0,lsr#1
-	b chr67_
+	b_long chr67_
 	mov pc,lr
 notchb2
 	ldrb r0,chrpage8
-;	bl chr0_
+;	bl_long chr0_
 	ldrb r0,chrpage9
-;	bl chr1_
+;	bl_long chr1_
 	ldrb r0,chrpage10
-;	bl chr2_
+;	bl_long chr2_
 	ldrb r0,chrpage11
-;	bl chr3_
+;	bl_long chr3_
 	ldrb r0,chrpage8
-	bl chr4_
+	bl_long chr4_
 	ldrb r0,chrpage9
-	bl chr5_
+	bl_long chr5_
 	ldrb r0,chrpage10
-	bl chr6_
+	bl_long chr6_
 	ldr lr,[sp],#4
 	ldrb r0,chrpage11
-	b chr7_
+	b_long chr7_
 
 map5Sound
 	mov pc,lr
@@ -326,7 +327,7 @@ setEnIrq
 ;-------------------------------------------------------
 mmc5_r		;5204,5205,5206
 	cmp addy,#0x5200
-	blo IO_R
+	blo_long IO_R
 	and r2,addy,#0xff
 	cmp r2,#0x04
 	beq MMC5IRQR
@@ -360,7 +361,7 @@ MMC5MulB
 	mov pc,lr
 
 ;-------------------------------------------------------
-hook
+mapper_5_hook
 ;------------------------------------------------------
 	ldrb r0,counter
 	ldr r1,scanline
@@ -381,7 +382,7 @@ h2
 	ldrb r0,enable
 	cmp r0,#0
 ;	bne irq6502
-	bne CheckI
+	bne_long CheckI
 h1
 	strb r2,mmc5irqr
 	fetch 0

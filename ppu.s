@@ -14,11 +14,13 @@
 	EXPORT vram_map
 	EXPORT vram_write_tbl
 	EXPORT VRAM_chr
+	EXPORT VRAM_chr2
 	EXPORT debug_
 	EXPORT AGBinput
 	EXPORT EMUinput
 	EXPORT paletteinit
 	EXPORT PaletteTxAll
+	EXPORT Update_Palette
 	EXPORT newframe
 	EXPORT agb_pal
 	EXPORT ppustate
@@ -35,6 +37,9 @@
 	EXPORT vbldummy
 	EXPORT vblankfptr
 	EXPORT vblankinterrupt
+	EXPORT NES_VRAM
+	EXPORT scrollbuff
+	EXPORT dmascrollbuff
 
  AREA rom_code, CODE, READONLY
 
@@ -179,7 +184,8 @@ gloop0
 
 	ldr r6,=MAPPED_RGB
 	mov r7,r6
-	ldrb r1,gammavalue	;gamma value = 0 -> 4
+	ldr r1,=gammavalue
+	ldrb r1,[r1]	;gamma value = 0 -> 4
 	mov r4,#64			;pce rgb, r1=R, r2=G, r3=B
 gloop					;map 0bbbbbgggggrrrrr  ->  0bbbbbgggggrrrrr
 	ldrb r0,[r6],#1
@@ -218,10 +224,19 @@ gammaconvert;	takes value in r0(0-0xFF), gamma in r1(0-4),returns new value in r
 ;----------------------------------------------------------------------------
 PaletteTxAll
 ;----------------------------------------------------------------------------
-	mov r2,#0x1F
+	stmfd sp!,{r0-r4}
+
+	;monochrome mode stuff
+	ldr r4,=g_ppuctrl1
+	ldrb r4,[r4]
+
+	mov r2,#0x20
 pxall
 	ldr r1,=nes_palette
 	ldrb r0,[r1,r2]	;load from nes palette
+	;monochrome test
+	tst r4,#1
+	andne r0,r0,#0x30
 
 	ldr r1,=MAPPED_RGB
 	ldr r0,[r1,r0,lsl#1]	;lookup RGB
@@ -229,8 +244,27 @@ pxall
 	mov r3,r2,lsl#1
 	strh r0,[r1,r3]	;store in agb palette
 	subs r2,r2,#1
-	bpl pxall
+	bne pxall
+	
+	ldmfd sp!,{r0-r4}
+	bx lr
 
+Update_Palette
+	stmfd sp!,{r0-addy}
+	mov r8,#AGB_PALETTE		;palette transfer
+	ldr addy,=agb_pal
+up8	ldmia addy!,{r0-r7}
+	stmia r8,{r0,r1}
+	add r8,r8,#32
+	stmia r8,{r2,r3}
+	add r8,r8,#32
+	stmia r8,{r4,r5}
+	add r8,r8,#32
+	stmia r8,{r6,r7}
+	add r8,r8,#0x1a0
+	tst r8,#0x200
+	bne up8			;(2nd pass: sprite pal)
+	ldmfd sp!,{r0-addy}
 	bx lr
 
 ;----------------------------------------------------------------------------
@@ -290,7 +324,8 @@ ppi0	mov r0,#0
 ;----------------------------------------------------------------------------
 PPU_reset	;called with CPU reset
 ;----------------------------------------------------------------------------
-	str lr,[sp,#-4]!
+	stmfd sp!,{globalptr,lr}
+	ldr globalptr,=|wram_globals0$$Base|
 	mov r0,#0
 	strb r0,ppuctrl0	;NMI off
 	strb r0,ppuctrl1	;screen off
@@ -311,8 +346,10 @@ PPU_reset	;called with CPU reset
 	bl filler_
 
 	mov r0,#0
-	ldr r1,=NES_VRAM
-	mov r2,#0x3000/4
+;	ldr r1,=NES_VRAM
+;	mov r2,#0x3000/4
+	ldr r1,=NES_VRAM+0x2000
+	mov r2,#0x1000/4
 	bl filler_			;clear nes VRAM
 
 	;ldr r1,=MEM_AGB_SCREEN	;clear AGB BG
@@ -328,18 +365,20 @@ PPU_reset	;called with CPU reset
 	bl filler_
 
 	bl paletteinit		;do palette mapping (for VS) & gamma
-	ldr lr,[sp],#4
+	ldmfd sp!,{globalptr,lr}
 	bx lr
 ;----------------------------------------------------------------------------
 showfps_		;fps output, r0-r3=used.
 ;----------------------------------------------------------------------------
-	ldrb r0,fpschk
+	ldr r1,=fpschk
+	ldrb r0,[r1]
 	subs r0,r0,#1
 	movmi r0,#59
-	strb r0,fpschk
+	strb r0,[r1]
 	bxpl lr					;End if not 60 frames has passed
 
-	ldrb r0,fpsenabled
+	ldr r0,=fpsenabled
+	ldrb r0,[r0]
 	tst r0,#1
 	bxeq lr					;End if not enabled
 
@@ -352,17 +391,20 @@ showfps_		;fps output, r0-r3=used.
 	mov r1,#100
 	swi 0x060000			;Division r0/r1, r0=result, r1=remainder.
 	add r0,r0,#0x30
-	strb r0,fpstext+5
+	ldr r2,=fpstext+5
+	strb r0,[r2]
 	mov r0,r1
 	mov r1,#10
 	swi 0x060000			;Division r0/r1, r0=result, r1=remainder.
 	add r0,r0,#0x30
-	strb r0,fpstext+6
+	ldr r2,=fpstext+6
+	strb r0,[r2]
 	add r1,r1,#0x30
-	strb r1,fpstext+7
+	ldr r2,=fpstext+7
+	strb r1,[r2]
 	
 
-	adr r0,fpstext
+	ldr r0,=fpstext
 	ldr r2,=DEBUGSCREEN
 db1
 	ldrb r1,[r0],#1
@@ -391,12 +433,98 @@ db0
  ]
 	bx lr
 ;----------------------------------------------------------------------------
+	AREA wram_code6, CODE, READWRITE
+;----------------------------------------------------------------------------
+;this stuff can't be in rom!
 fpstext DCB "FPS:    "
 fpsenabled DCB 0
 fpschk	DCB 0
 gammavalue DCB 0
 		DCB 0
 ;----------------------------------------------------------------------------
+VRAM_chr2;	0000-1fff
+;----------------------------------------------------------------------------
+; p pp__ ____ ____
+; vram_address = vram_map[addy >> 10]
+; find nes_char_map entry...
+; nes_page = nes_char_map[addy >> 10]
+; search through agb_bg_map for pages that match nes_page, update agb_vram as necessary
+; 
+;	cmp addy,#0x660
+;	beq VRAM_chr2
+	stmfd sp!,{r0-r7,lr}
+	mov r2,addy,lsr#10   ;r2 = vram mapped page
+	bic addy,addy,#0xFC00  ;addy = offset inside vram page
+	ldr r3,=vram_map
+	ldr r3,[r3,r2,lsl#2] ;r3 = vram base address
+	strb r0,[addy,r3]
+	adrl r4,nes_chr_map
+	ldrb r4,[r4,r2]      ;r4 = vram_page in memory map
+	adrl r5,agb_bg_map   ;r5 = address inside agb_bg_map
+	mov r6,#0            ;r6 = page number for bg_map
+	bic addy,addy,#8
+bank_search_loop
+	ldrb r0,[r5,r6]
+	cmp r0,r4
+	bleq write_new_gba_vram
+	add r6,r6,#1
+	cmp r6,#16
+	bne bank_search_loop
+
+	add r5,r5,#16
+	mov r6,#0
+bank_search_loop_2
+	ldrb r0,[r5,r6]
+	cmp r0,r4
+	bleq write_new_gba_vram_2
+	add r6,r6,#1
+	cmp r6,#8
+	bne bank_search_loop_2
+	
+	ldmfd sp!,{r0-r7,pc}
+	
+write_new_gba_vram_2
+	;for objs
+;	mov r1,r6,lsr#2
+;	mov r1,r1,lsl#13
+;	ldr r7,=AGB_VRAM+0x10000
+;	add r7,r1,r7
+	ldr r7,=AGB_VRAM+0x10000
+	mov r0,r6,lsr#2
+	add r7,r7,r0,lsl#13
+	b write_new_gba_vram_entrypoint
+
+write_new_gba_vram
+	;r6 = page number
+	;AGB_VRAM address = (pagenum & 3)*0x800 + (pagenum>>2)*0x4000
+	;offset = tile*32 + row*4
+	;       = (addy/16)*32 + (addy & 7)*4
+	ldr r7,=AGB_VRAM
+	mov r0,r6,lsr#2
+	add r7,r7,r0,lsl#14
+write_new_gba_vram_entrypoint
+	and r0,r6,#3
+	add r7,r7,r0,lsl#11
+
+
+	and r0,addy,#7
+	mov r1,addy,lsr#4
+	add r7,r7,r0,lsl#2
+	add r7,r7,r1,lsl#5
+	
+	mov r2,r3
+	ldrb r0,[r2,addy]!	;read 1st plane
+	ldrb r1,[r2,#8]		;read 2nd plane
+	
+	adr r2,chr_decode
+	ldr r0,[r2,r0,lsl#2]
+	ldr r1,[r2,r1,lsl#2]
+	orr r0,r0,r1,lsl#1
+	
+	str r0,[r7]
+	mov pc,lr
+
+
 	AREA wram_code1, CODE, READWRITE
 irqhandler	;r0-r3,r12 are safe to use
 ;----------------------------------------------------------------------------
@@ -468,7 +596,7 @@ vblankinterrupt;
 	movpl r0,#0
 	strb r0,PAL60
 nopal60
-	bl showfps_
+	bl_long showfps_
 
 
 	ldr r2,=DMA0BUFF	;setup DMA buffer for scrolling:
@@ -740,7 +868,15 @@ ctrl0_W		;(2000)
 ;----------------------------------------------------------------------------
 ctrl1_W		;(2001)
 ;----------------------------------------------------------------------------
+	ldrb r1,ppuctrl1
 	strb r0,ppuctrl1
+	;has monochrome mode bit changed?
+	eor r1,r1,r0
+	tst r1,#0x01
+	;update palette
+	mov r1,lr
+	blne_long PaletteTxAll
+	mov lr,r1
 
 	mov r1,#0x0440		;1d sprites, BG2 enable. DISPCNTBUFF startvalue. 0x0440
 	tst r0,#0x08		;bg en?
@@ -996,7 +1132,7 @@ writeBG		;loadcart jumps here
 	orr r1,r0,r1
 	strh r1,[r2,addy]	;write tile#
 		cmp r0,#0xfd	;mapper 9 shit..
-		bhs mapper9BGcheck
+		bhs_long mapper9BGcheck
 	mov pc,lr
 writeattrib
 	stmfd sp!,{r3,r4,lr}
@@ -1076,6 +1212,11 @@ VRAM_pal	;write to VRAM palette area ($3F00-$3F1F)
 		moveq addy,#0	;$10 mirror to $00
 	adr r1,nes_palette
 	strb r0,[r1,addy]	;store in nes palette
+	
+	;monochrome mode stuff
+	ldrb r1,ppuctrl1
+	tst r1,#0x01
+	andne r0,r0,#0x30
 
 	add r0,r0,r0
 	ldr r1,=MAPPED_RGB
@@ -1162,8 +1303,10 @@ ppustate
 	DCB 0 ;toggle
 	DCB 0 ;ppuctrl0
 	DCB 0 ;ppuctrl0frame	;state of $2000 at frame start
+g_ppuctrl1
 	DCB 0 ;ppuctrl1
 	DCB 0 ;ppuoamadr
 ;...update load/savestate if you move things around in here
 ;----------------------------------------------------------------------------
 	END
+

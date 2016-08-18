@@ -8,6 +8,7 @@
 	INCLUDE 6502mac.h
 
 	EXPORT mapper73init
+	EXPORT mapper_73_hook
 
 counter EQU mapperdata
 irqen EQU mapperdata+4
@@ -16,7 +17,7 @@ mapper73init	;Konami Salamander (J)...
 ;----------------------------------------------------------------------------
 	DCD write8000,writeA000,writeC000,writeE000
 
-	adr r0,hook
+	adr r0,mapper_73_hook
 	str r0,scanlinehook
 
 	mov pc,lr
@@ -66,10 +67,10 @@ writeC000
 writeE000
 ;-------------------------------------------------------
 	tst addy,#0x1000
-	bne map89AB_
+	bne_long map89AB_
 	mov pc,lr
 ;-------------------------------------------------------
-hook
+mapper_73_hook
 ;------------------------------------------------------
 	ldrb r0,irqen
 	cmp r0,#0	;timer active?
@@ -84,7 +85,7 @@ hook
 	sub r0,r0,#0x10000
 	str r0,counter
 ;	b irq6502
-	b CheckI
+	b_long CheckI
 h0
 	str r0,counter
 h1

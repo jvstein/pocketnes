@@ -1,6 +1,12 @@
-#include <string.h>
 #include "gba.h"
+
+#include <string.h>
+#include "sram.h"
+#include "main.h"
+#include "asmcalls.h"
+#include "ui.h"
 #include "minilzo.107/minilzo.h"
+#include "cheat.h"
 
 #define STATEID 0x57a731d7
 
@@ -8,47 +14,17 @@
 #define SRAMSAVE 1
 #define CONFIGSAVE 2
 
-extern u8 Image$$RO$$Limit;
-extern u8 g_cartflags;	//(from iNES header)
-extern char g_scaling;	//(cart.s) current display mode
-extern char flicker;	//from ppu.s
-extern u8 gammavalue;	//(ppu.s) current gammavalue
-extern u8 stime;		//from ui.c
-extern u8 autostate;	//from ui.c
-extern u8 *textstart;	//from main.c
-
-extern char pogoshell;	//main.c
+#ifdef CHEATFINDER
+	#define CHEATLIST 3
+#endif
 
 int totalstatesize;		//how much SRAM is used
-
-//-------------------
-u8 *findrom(int);
-void cls(int);		//main.c
-void drawtext(int,char*,int);
-void setdarknessgs(int dark);
-void scrolll(int f);
-void scrollr(void);
-void waitframe(void);
-u32 getmenuinput(int);
-void writeconfig(void);
-void setup_sram_after_loadstate(void);
-
-extern int roms;		//main.c
-extern int selected;	//ui.c
-extern char pogoshell_romname[32];	//main.c
-//----asm stuff------
-int savestate(void*);		//cart.s
-void loadstate(int,void*);		//cart.s
-
-extern u8 *romstart;	//from cart.s
-extern u32 romnum;	//from cart.s
-extern u32 frametotal;	//from 6502.s
-//-------------------
+u32 sram_owner=0;
 
 typedef struct {
 	u16 size;	//header+data
 	u16 type;	//=STATESAVE or SRAMSAVE
-	u32 compressedsize;
+	u32 uncompressed_size;
 	u32 framecount;
 	u32 checksum;
 	char title[32];
@@ -66,10 +42,31 @@ typedef struct {		//(modified stateheader)
 	char reserved4[32];  //="CFG"
 } configdata;
 
+void flush_end_sram(void);
+void getsram(void);
+void writeerror(void);
+int updatestates(int index,int erase,int type);
+int twodigits(int n,char *s);
+void getstatetimeandsize(char *s,int time,u32 size,u32 totalsize);
+stateheader* drawstates(int menutype,int *menuitems,int *menuoffset);
+void compressstate(lzo_uint size,u16 type,u8 *src,void *workspace);
+int findstate(u32 checksum,int type,stateheader **stateptr);
+void uncompressstate(int rom,stateheader *sh);
+int using_flashcart(void); 
+void save_new_sram(void);
+void register_sram_owner(void);
+void no_sram_owner(void);
+void setup_sram_after_loadstate(void);
+
+
 //we have a big chunk of memory starting at Image$$RO$$Limit free to use
-#define BUFFER1 (&Image$$RO$$Limit)
-#define BUFFER2 (&Image$$RO$$Limit+0x10000)
-#define BUFFER3 (&Image$$RO$$Limit+0x20000)
+u8* BUFFER1;
+u8* BUFFER2;
+u8* BUFFER3;
+
+#define buffer1 BUFFER1
+#define buffer2 BUFFER2
+#define buffer3 BUFFER3
 
 void bytecopy(u8 *dst,u8 *src,int count) {
 	int i=0;
@@ -90,14 +87,25 @@ void errmsg(char *s) {
 	drawtext(32+9,"                     ",0);
 }*/
 
+void flush_end_sram()
+{
+	u8* sram=MEM_SRAM;
+	int i;
+	for (i=0xE000;i<0x10000;i++)
+	{
+		sram[i]=0;
+	}
+}
+
+
 void getsram() {		//copy GBA sram to BUFFER1
 	u8 *sram=MEM_SRAM;
-	u8 *buff1=BUFFER1;
+	u8 *buff1=buffer1;
 	u32 *p;
 
 	p=(u32*)buff1;
 	if(*p!=STATEID) {	//if sram hasn't been copied already
-		bytecopy(buff1,sram,0xe000);	//copy everything to BUFFER1
+		bytecopy(buff1,sram,0xe000);	//copy everything to buffer1
 		if(*p!=STATEID) {	//valid savestate data?
 			*p=STATEID;	//nope.  initialize
 			*(p+1)=0;
@@ -120,7 +128,7 @@ void writeerror() {
 	int i;
 	cls(2);
 	drawtext(32+9, "  Write error! Memory full.",0);
-	drawtext(32+10,"     Delete some games.",0);
+	drawtext(32+10,"     Delete some saves.",0);
 	for(i=90;i;--i)
 		waitframe();
 }
@@ -303,13 +311,23 @@ void compressstate(lzo_uint size,u16 type,u8 *src,void *workspace) {
 	lzo_uint compressedsize;
 	stateheader *sh;
 
-	lzo1x_1_compress(src,size,BUFFER3+sizeof(stateheader),&compressedsize,workspace);	//workspace needs to be 64k
-
+/*
+	if (workspace == NULL) {
+		// No workspace, no compression.
+		memcpy(BUFFER3+sizeof(stateheader),src,size);
+		compressedsize=size;
+	} else {
+ */
+	//workspace needs to be 64k
+	lzo1x_1_compress(src,size,BUFFER3+sizeof(stateheader),&compressedsize,workspace);
+/*	}
+ */
+	
 	//setup header:
 	sh=(stateheader*)BUFFER3;
 	sh->size=(compressedsize+sizeof(stateheader)+3)&~3;	//size of compressed state+header, word aligned
 	sh->type=type;
-	sh->compressedsize=compressedsize;	//size of compressed state
+	sh->uncompressed_size=size;	//size of compressed state
 	sh->framecount=frametotal;
 	sh->checksum=checksum((u8*)romstart);	//checksum
     if(pogoshell)
@@ -405,7 +423,7 @@ int findstate(u32 checksum,int type,stateheader **stateptr) {
 }
 
 void uncompressstate(int rom,stateheader *sh) {
-	lzo_uint statesize=sh->compressedsize;
+	lzo_uint statesize=sh->size-sizeof(stateheader);
 	lzo1x_decompress((u8*)(sh+1),statesize,BUFFER2,&statesize,NULL);
 	loadstate(rom,BUFFER2);
 	frametotal=sh->framecount;		//restore global frame counter
@@ -415,6 +433,60 @@ void uncompressstate(int rom,stateheader *sh) {
 int using_flashcart() {
 	return (u32)textstart&0x8000000;
 }
+
+#ifdef CHEATFINDER
+void cheatload() {
+	stateheader *sh;
+	int i;
+	u16 *dst, *src;
+	lzo_uint cheatsize;
+
+	if(!using_flashcart())
+		return;
+
+	i=findstate(checksum((u8*)romstart),CHEATLIST,&sh);
+	if(i>=0) {
+		/* The cheat list is in videoram, so it's necessary
+		 * to write a byte at a time. */
+		cheatsize=sh->size-sizeof(stateheader);
+		lzo1x_decompress((u8*)(sh+1),cheatsize,BUFFER2,&cheatsize,NULL);
+		src=(u16*)BUFFER2;
+		dst=(u16*)(&CHEATFINDER_CHEATS);
+		// Write up to an extra byte.
+		for (i = 0; i < cheatsize/2+(cheatsize&1); i++)
+		{
+			*dst = *src;
+			src++;
+			dst++;
+		}
+		num_cheats=cheatsize/18;
+	} else
+		num_cheats=0;
+}
+
+void cheatsave() {
+	stateheader *sh;
+	int i;
+
+	if(!using_flashcart())
+		return;
+
+	setdarknessgs(7);	//darken
+	drawtext(32+9,"       Saving cheat.",0);
+
+	i=findstate(checksum((u8*)romstart),CHEATLIST,&sh);
+	if(i<0) i=65536;	//make new save if one doesn't exist
+	if (num_cheats) {
+		compressstate(num_cheats*18,CHEATLIST,CHEATFINDER_CHEATS,BUFFER2);
+		if(!updatestates(i,0,CHEATLIST))
+			writeerror();
+	} else if (i < 65536) {
+		if(!updatestates(i,1,CHEATLIST))
+			writeerror();
+	}
+	cls(2);
+}
+#endif
 
 void quickload() {
 	stateheader *sh;
@@ -447,14 +519,17 @@ void quicksave() {
 	cls(2);
 }
 
-void backup_nes_sram() {
-	int i;
+int backup_nes_sram(int called_from)
+{
+	int i=0;
 	configdata *cfg;
 	stateheader *sh;
 	lzo_uint compressedsize;
 
+//	u32 chk = checksum(findrom(i)+sizeof(romheader)+16);
+	
 	if(!using_flashcart())
-		return;
+		return 1;
 
 	i=findstate(0,CONFIGSAVE,(stateheader**)&cfg);	//find config
 	if(i>=0 && cfg->sram_checksum) {	//SRAM is occupied?
@@ -464,10 +539,21 @@ void backup_nes_sram() {
 			lzo1x_1_compress(MEM_SRAM+0xe000,0x2000,BUFFER3+sizeof(stateheader),&compressedsize,BUFFER2);	//workspace needs to be 64k
 			sh=(stateheader*)BUFFER3;
 			sh->size=(compressedsize+sizeof(stateheader)+3)&~3;	//size of compressed state+header, word aligned
-			sh->compressedsize=compressedsize;	//size of compressed state
-			updatestates(i,0,SRAMSAVE);
+			sh->uncompressed_size=0x2000;	//size of compressed state
+			if (!updatestates(i,0,SRAMSAVE))
+			{
+				writeerror();
+				return 0;
+			}
+			else
+			{
+				i=findstate(0,CONFIGSAVE,(stateheader**)&cfg);	//find config
+				no_sram_owner();
+			}
 		}
 	}
+	return 1;
+	
 }
 
 //make new saved sram (using NES_SRAM contents)
@@ -477,7 +563,8 @@ void save_new_sram() {
 	updatestates(65536,0,SRAMSAVE);
 }
 
-void get_saved_sram() {
+void get_saved_sram(void)
+{
 	int i,j;
 	u32 chk;
 	configdata *cfg;
@@ -491,20 +578,38 @@ void get_saved_sram() {
 		chk=checksum(romstart);
 		i=findstate(0,CONFIGSAVE,(stateheader**)&cfg);	//find config
 		j=findstate(chk,SRAMSAVE,&sh);	//see if packed SRAM exists
+		
+		//probably shouldn't do this
+/*
 		if(i>=0) if(chk==cfg->sram_checksum) {	//SRAM is already ours
 			bytecopy(NES_SRAM,MEM_SRAM+0xe000,0x2000);
 			if(j<0) save_new_sram();	//save it if we need to
 			return;
 		}
+		*/
 		if(j>=0) {//packed SRAM exists: unpack into NES_SRAM
-			statesize=sh->compressedsize;
+			statesize=sh->size-sizeof(stateheader);
 			lzo1x_decompress((u8*)(sh+1),statesize,NES_SRAM,&statesize,NULL);
 		} else { //pack new sram and save it.
 			save_new_sram();
 		}
 		bytecopy(MEM_SRAM+0xe000,NES_SRAM,0x2000);
-		writeconfig();//register new sram owner
+		register_sram_owner();//register new sram owner
+
 	}
+}
+
+void register_sram_owner()
+{
+	sram_owner=checksum(romstart);
+	writeconfig();
+}
+
+void no_sram_owner()
+{
+	sram_owner=0;
+	writeconfig();
+	flush_end_sram();
 }
 
 void setup_sram_after_loadstate() {
@@ -516,13 +621,13 @@ void setup_sram_after_loadstate() {
 		chk=checksum(romstart);
 		i=findstate(0,CONFIGSAVE,(stateheader**)&cfg);	//find config
 		if(i>=0) if(chk!=cfg->sram_checksum) {//if someone else was using sram, save it
-			backup_nes_sram();
+			backup_nes_sram(0);
 		}
 		bytecopy(MEM_SRAM+0xe000,NES_SRAM,0x2000);		//copy nes sram to real sram
 		i=findstate(chk,SRAMSAVE,(stateheader**)&cfg);	//does packed SRAM for this rom exist?
 		if(i<0)						//if not, create it
 			save_new_sram();
-		writeconfig();//register new sram owner
+		register_sram_owner();//register new sram owner
 	}
 }
 
@@ -593,12 +698,10 @@ void writeconfig() {
 	j |= (gammavalue & 0x7)<<5;					//store current gamma value
 	cfg->displaytype = j;
 	j = stime & 0x3;							//store current autosleep time
-	j |= (autostate & 0x1)<<5;					//store current autostate setting
+	j |= (autostate & 0x3)<<5;					//store current autostate setting
 	j |= ((flicker & 0x1)^1)<<4;				//store current flicker setting
 	cfg->misc = j;
-	if(g_cartflags&2) {							//update sram owner
-			cfg->sram_checksum=checksum(romstart);
-	}
+	cfg->sram_checksum=sram_owner;
 	if(i<0) {	//create new config
 		updatestates(0,0,CONFIGSAVE);
 	} else {		//config already exists, update sram directly (faster)
@@ -619,10 +722,12 @@ void readconfig() {
 		gammavalue = (i & 0xE0)>>5;				//restore gamma value
 		i = cfg->misc;
 		stime = i & 0x3;						//restore autosleep time
-		autostate = (i & 0x20)>>5;				//restore autostate setting
+		autostate = (i & 0x60)>>5;				//restore autostate setting
 		flicker = ((i & 0x10)^0x10)>>4;			//restore flicker setting
 	}
 }
+
+#if 0
 void clean_nes_sram() {
 	int i,j;
 	u8 *nes_sram_ptr = MEM_SRAM+0xe000;
@@ -651,4 +756,5 @@ void clean_nes_sram() {
 		bytecopy((u8*)cfg-BUFFER1+MEM_SRAM,(u8*)cfg,sizeof(configdata));
 	}
 }
+#endif
 

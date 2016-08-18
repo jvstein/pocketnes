@@ -8,6 +8,7 @@
 	INCLUDE io.h
 
 	EXPORT mapper19init
+	EXPORT mapper_19_hook
 
 counter EQU mapperdata+0
 enable EQU mapperdata+4
@@ -24,14 +25,14 @@ mapper19init
 	str r1,readmem_tbl+8
 
 
-	adr r0,hook
+	adr r0,mapper_19_hook
 	str r0,scanlinehook
 
 	mov pc,lr
 ;-------------------------------------------------------
 write0
 	cmp addy,#0x5000
-	blo IO_W
+	blo_long IO_W
 	and r1,addy,#0x7800
 	cmp r1,#0x5000
 	streqb r0,counter+2
@@ -46,7 +47,7 @@ write0
 ;-------------------------------------------------------
 map19_r
 	cmp addy,#0x5000
-	blo IO_R
+	blo_long IO_R
 	and r1,addy,#0x7800
 
 	cmp r1,#0x5000
@@ -72,15 +73,15 @@ map19_E
 ;-------------------------------------------------------
 	and r1,addy,#0x7800
 	cmp r1,#0x6000
-	beq map89_
+	beq_long map89_
 	cmp r1,#0x6800
-	beq mapAB_
+	beq_long mapAB_
 	cmp r1,#0x7000
-	beq mapCD_
+	beq_long mapCD_
 	mov pc,lr
 
 ;-------------------------------------------------------
-hook
+mapper_19_hook
 ;------------------------------------------------------
 	ldrb r0,enable
 	cmp r0,#0
@@ -96,7 +97,7 @@ hook
 	sub r0,r0,#0x10000
 	str r0,counter
 ;	b irq6502
-	b CheckI
+	b_long CheckI
 h1
 	fetch 0
 

@@ -16,19 +16,19 @@ mapper34init	;Impossible Mission 2 & Deadly Towers
 	str r1,writemem_tbl+12
 
 	mov r0,#0
-	b map89ABCDEF_
+	b_long map89ABCDEF_
 ;-------------------------------------------------------
 write0			;Impossible Mission 2
 ;-------------------------------------------------------
 	ldr r1,=0x7fff
 	cmp addy,r1		;7FFF
-	beq chr4567_
+	beq_long chr4567_
 	sub r1,r1,#1
 	cmp addy,r1		;7FFE
-	beq chr0123_
+	beq_long chr0123_
 	sub r1,r1,#1
 	cmp addy,r1		;7FFD
-	beq map89ABCDEF_
-	b sram_W
+	beq_long map89ABCDEF_
+	b_long sram_W
 ;-------------------------------------------------------
 	END

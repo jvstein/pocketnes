@@ -8,6 +8,7 @@
 	INCLUDE 6502mac.h
 
 	EXPORT mapper40init
+	EXPORT mapper_40_hook
 
 countdown EQU mapperdata+0
 irqen EQU mapperdata+4
@@ -17,7 +18,7 @@ mapper40init		;SMB2j
 	DCD write0,write1,void,mapCD_
 
 	mov addy,lr
-	adr r0,hook
+	adr r0,mapper_40_hook
 	str r0,scanlinehook
 
 	ldr r0,=rom_R60			;Set ROM at $6000-$7FFF.
@@ -28,11 +29,11 @@ mapper40init		;SMB2j
 	bl write0
 
 	mov r0,#-1
-	bl map89ABCDEF_
+	bl_long map89ABCDEF_
 
 	mov r0,#6
 	mov lr,addy
-	b map67_
+	b_long map67_
 ;----------------------------------------------------------------------------
 write0		;$8000-$9FFF
 ;----------------------------------------------------------------------------
@@ -48,7 +49,7 @@ write1		;$A000-$BFFF
 	strb r0,irqen
 	mov pc,lr
 ;----------------------------------------------------------------------------
-hook
+mapper_40_hook
 ;----------------------------------------------------------------------------
 	ldrb r0,irqen
 	cmp r0,#0
@@ -63,7 +64,7 @@ hook
 	mov r0,#0
 	strb r0,irqen
 ;	b irq6502
-	b CheckI
+	b_long CheckI
 hk0
 	fetch 0
 ;----------------------------------------------------------------------------

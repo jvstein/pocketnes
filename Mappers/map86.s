@@ -14,7 +14,7 @@ mapper86init	;Jaleco - Moero!! Pro Yakyuu, Urusei Yatsura...
 	adr r1,write86
 	str r1,writemem_tbl+12
 	mov r0,#0
-	b map89ABCDEF_
+	b_long map89ABCDEF_
 ;-------------------------------------------------------
 write86
 ;-------------------------------------------------------
@@ -22,12 +22,12 @@ write86
 	movne pc,lr
 	stmfd sp!,{r0,lr}
 	mov r0,r0,lsr#4
-	bl map89ABCDEF_
+	bl_long map89ABCDEF_
 	ldmfd sp!,{r0,lr}
 	and r1,r0,#0x40
 	and r0,r0,#0x03
 	orr r0,r0,r1,lsr#4
-	b chr01234567_
+	b_long chr01234567_
 
 
 ;-------------------------------------------------------

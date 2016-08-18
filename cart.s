@@ -50,6 +50,13 @@
 	EXPORT g_scaling
 	EXPORT g_cartflags
 	EXPORT g_hackflags
+	EXPORT g_hackflags2
+	EXPORT g_mapper_number
+	EXPORT g_rombase
+	EXPORT g_vrombase
+	EXPORT g_vrommask
+	EXPORT NES_RAM
+	EXPORT NES_SRAM
 ;----------------------------------------------------------------------------
  AREA rom_code, CODE, READONLY
 ;----------------------------------------------------------------------------
@@ -80,6 +87,7 @@ mappertbl
 	DCD 33,mapper33init
 	DCD 34,mapper34init
 	DCD 40,mapper40init
+	DCD 42,mapper42init
 	DCD 64,mapper64init
 	DCD 65,mapper65init
 	DCD 66,mapper66init
@@ -90,6 +98,7 @@ mappertbl
 	DCD 71,mapper71init
 	DCD 72,mapper72init
 	DCD 73,mapper73init
+	DCD 74,mapper74init
 	DCD 75,mapper75init
 	DCD 76,mapper76init
 	DCD 77,mapper77init
@@ -105,16 +114,27 @@ mappertbl
 	DCD 97,mapper97init
 	DCD 99,mapper99init
 	DCD 105,mapper105init
-	DCD 118,mapper4init
-	DCD 119,mapper4init
+	DCD 118,mapper118init
+	DCD 119,mapper119init
+	DCD 140,mapper66init
 	DCD 151,mapper151init
 	DCD 152,mapper152init
 	DCD 158,mapper64init
+	DCD 178,mapper4init
 	DCD 180,mapper180init
 	DCD 184,mapper184init
+	DCD 187,mapper4init
 	DCD 228,mapper228init
 	DCD 232,mapper232init
+	DCD 245,mapper245init
+	DCD 249,mapper249init
+	DCD 252,mapper4init
+	DCD 254,mapper4init
+
 	DCD -1,mapper0init
+
+thumbcall_r1_b
+	bx r1
 
 ;----------------------------------------------------------------------------
 loadcart ;called from C:  r0=rom number, r1=emuflags
@@ -122,7 +142,7 @@ loadcart ;called from C:  r0=rom number, r1=emuflags
 	stmfd sp!,{r0-r1,r4-r11,lr}
 
 	ldr r1,=findrom
-	bl thumbcall_r1
+	bl thumbcall_r1_b
 
 	ldr globalptr,=|wram_globals0$$Base|	;need ptr regs init'd
 	ldr cpu_zpage,=NES_RAM
@@ -140,6 +160,7 @@ loadcart ;called from C:  r0=rom number, r1=emuflags
 
 	mov r2,#1
 	ldrb r1,[r3,#-12]
+	strb r1,rompages
 	rsb r0,r2,r1,lsl#14
 	str r0,rommask		;rommask=romsize-1
 
@@ -147,6 +168,7 @@ loadcart ;called from C:  r0=rom number, r1=emuflags
 	str r0,vrombase		;set vrom base
 
 	ldrb r4,[r3,#-11]
+	strb r4,vrompages
 	mov r1,r4			;r1=vrom size
 	cmp r4,#2
 	movhi r1,#4			;needs to be power of 2 (stupid zelda2)
@@ -161,12 +183,32 @@ loadcart ;called from C:  r0=rom number, r1=emuflags
 	cmp r4,#64
 	movhi r1,#128
 	rsbs r0,r2,r1,lsl#13
+	ldrmi r0,=0x1FFF
 	str r0,vrommask		;vrommask=vromsize-1
 	ldrmi r0,=NES_VRAM
 	strmi r0,vrombase	;vrombase=NES VRAM if vromsize=0
 
 	ldr r0,=void
 	ldrmi r0,=VRAM_chr	;enable/disable chr write
+
+	ldrb r1,[r3,#-10]		;get mapper#
+	ldrb r2,[r3,#-9]
+	tst r2,#0x0e			;long live DiskDude!
+	and r1,r1,#0xf0
+	and r2,r2,#0xf0
+	orr r4,r2,r1,lsr#4
+	movne r4,r1,lsr#4		;ignore high nibble if header looks bad
+	
+	strb r4,mapper_number
+	
+	;enable VRAM writing for mapper 199 and 74
+	;also double vrom size for mapper 119
+	cmp r4,#119
+	ldreq r1,=0x1FFFF
+	streq r1,vrommask
+	cmpne r4,#74
+	ldreq r0,=VRAM_chr2
+
 	ldr r1,=vram_write_tbl
 	mov r2,#8
 	bl filler_
@@ -182,7 +224,7 @@ loadcart ;called from C:  r0=rom number, r1=emuflags
 	ldr r1,=0x03020100
 	str r1,[r2],#4
 	str r0,[r2] ;chrline
-	bl chr01234567_
+	bl_long chr01234567_
 
 	ldr r4,nes_chr_map
 	ldr r5,nes_chr_map+4
@@ -201,9 +243,10 @@ lc2
 	str m6502_pc,lastbank
 
 	mov r0,#0			;default ROM mapping
-	bl map89AB_			;89AB=1st 16k
+	bl_long map89AB_			;89AB=1st 16k
+
 	mov r0,#-1
-	bl mapCDEF_			;CDEF=last 16k
+	bl_long mapCDEF_			;CDEF=last 16k
 
 	ldrb r0,[r3,#-10]
 	ldrb r1,[r3,#-9]
@@ -217,8 +260,8 @@ lc2
 	ldr r0,=pcm_scanlinehook
 	str r0,scanlinehook	;no mapper irq
 
-	mov r0,#0xFFFFFFFF		;clear nes ram
-;	mov r0,#0
+;	mov r0,#0xFFFFFFFF		;clear nes ram
+	mov r0,#0
 	mov r1,cpu_zpage
 	mov r2,#0x800/4
 	bl filler_
@@ -230,6 +273,10 @@ lc2
 	mov r2,#32/4
 	bl filler_
 
+	ldrb r1,cartflags
+	tst r1,#SRAM		;don't use Low G Man fix if using SRAM
+	bne no_low_g_man_fix
+
 	mov r0,#0x7c
 	mov r1,cpu_zpage
 	ldr r2,=0x247d			;0x7c7d
@@ -238,10 +285,15 @@ lc2
 	mov r0,#0x7d
 	strb r0,[r1,r2]			;for "Low G Man".
 
+no_low_g_man_fix
+
 	ldr r0,=joy0_W
 	ldr r1,=joypad_write_ptr
 	str r0,[r1]				;reset 4016 write (mapper99 messes with it)
-
+	
+	ldr r1,=empty_W                 ;mapper 249 needs address 5000
+	ldr r0,=empty_io_w_hook
+	str r1,[r0]
 	ldr r1,=IO_R			;reset other writes..
 	str r1,readmem_tbl+8
 	ldr r1,=sram_R			;reset other writes..
@@ -253,15 +305,9 @@ lc2
 	ldr r1,=NES_RAM-0x5800	;$6000 for mapper 40, 69 & 90 that has rom here.
 	str r1,memmap_tbl+12
 
-	ldrb r1,[r3,#-10]		;get mapper#
-	ldrb r2,[r3,#-9]
-	tst r2,#0x0e			;long live DiskDude!
-	and r1,r1,#0xf0
-	and r2,r2,#0xf0
-	orr r0,r2,r1,lsr#4
-	movne r0,r1,lsr#4		;ignore high nibble if header looks bad
+	ldrb r0,mapper_number
 							;lookup mapper*init
-	adr r1,mappertbl
+	ldr r1,=mappertbl
 lc0	ldr r2,[r1],#8
 	teq r2,r0
 	beq lc1
@@ -276,7 +322,7 @@ lc1				;call mapper*init
 0
 	ldrb r1,cartflags
 	tst r1,#MIRROR		;set default mirror
-	bl mirror2H_		;(call after mapperinit to allow mappers to set up cartflags first)
+	bl_long mirror2H_		;(call after mapperinit to allow mappers to set up cartflags first)
 
 	bl PPU_reset
 	bl IO_reset
@@ -372,7 +418,7 @@ ls3	mov r1,r3
 	mov r2,r4
 	mov addy,r5
 	ldrb r0,[r1,addy]
-	bl writeBG
+	bl_long writeBG
 	add r5,r5,#1
 	tst r5,#0x400
 	beq ls3
@@ -399,16 +445,33 @@ lc3
 	mov r1,#-1			;init BG CHR
 	ldr r5,=AGB_VRAM
 	adrl r6,nes_chr_map
-	bl im_lazy
+	bl_long im_lazy
 	mov r1,#-1
 	ldr r5,=AGB_VRAM+0x4000
 	adrl r6,nes_chr_map+4
-	bl im_lazy
+	bl_long im_lazy
 
 	ldrb r0,ppuctrl1	;prep buffered DMA stuff
-	bl ctrl1_W
-	bl newX
-	bl resetBGCHR
+	bl_long ctrl1_W
+	bl_long newX
+	bl_long resetBGCHR
+	
+	ldr globalptr,=|wram_globals0$$Base|
+	ldrb r0,mapperdata+23
+	subs r0,r0,#1
+
+	ldrpl r1,=rom_R60			;Swap in ROM at $6000-$7FFF.
+	ldrmi r1,=sram_R		;Swap in sram at $6000-$7FFF.
+	str r1,readmem_tbl+12
+	ldrpl r1,=empty_W		;ROM.
+	ldrmi r1,=sram_W		;sram.
+	str r1,writemem_tbl+12
+	ldrmi r1,=NES_RAM-0x5800		;sram at $6000.
+	strmi r1,memmap_tbl+12
+	blpl_long map67_
+
+
+	
 
 	ldmfd sp!,{r4-r7,globalptr,lr}
 	bx lr
@@ -426,6 +489,46 @@ m0123	DCD 0xdc02,NES_VRAM+0x2000,NES_VRAM+0x2400,NES_VRAM+0x2800,NES_VRAM+0x2c00
 ;----------------------------------------------------------------------------
  AREA wram_code4, CODE, READWRITE
 ;----------------------------------------------------------------------------
+;new test code!
+;hackhack
+get_real_vrom_address_8k
+	add r0,r0,r0
+get_real_vrom_address_4k
+	add r0,r0,r0
+get_real_vrom_address_2k
+	add r0,r0,r0
+get_real_vrom_address
+	;r0 = page number (in 1k increments)
+	ldr r1,vrombase
+	add r1,r1,r0,lsl#10
+	ldrb r2,mapper_number
+	cmp r2,#74
+	beq mapper_74_vram
+	cmp r2,#119
+	beq tqrom_vram
+	mov pc,lr
+mapper_74_vram
+	;512k prg uses bank 8,9 for vram, otherwise bank 0,1
+	ldr r2,rommask
+	add r2,r2,#1
+	mov r2,r2,lsr#16
+	and r2,r2,#8
+	cmp r0,r2
+	ldreq r1,=NES_VRAM
+	add r2,r2,#1
+	cmp r0,r2
+	ldreq r1,=NES_VRAM+1024
+	mov pc,lr
+tqrom_vram
+	tst r0,#0x40
+	moveq pc,lr
+	ldr r1,=NES_VRAM
+	and r0,r0,#7
+	add r1,r1,r0,lsl#10
+	mov pc,lr
+
+
+
 mirrorKonami_
 	movs r1,r0,lsr#2
 	tst r0,#1
@@ -473,6 +576,10 @@ mirrorchange
 ;----------------------------------------------------------------------------
 map67_	;rom paging.. r0=page#
 ;----------------------------------------------------------------------------
+	;fix mapper 42,69?
+	add r1,r0,#1
+	strb r1,mapperdata+23
+	
 	ldr r1,rommask
 	and r0,r1,r0,lsl#13
 	ldr r1,rombase
@@ -568,8 +675,11 @@ chr0_
 	and r0,r0,r2,lsr#10
 
 	strb r0,nes_chr_map
-	ldr r1,vrombase
-	add r1,r1,r0,lsl#10
+;	ldr r1,vrombase
+;	add r1,r1,r0,lsl#10
+	stmfd sp!,{r2-r7,lr}
+	bl get_real_vrom_address
+	ldmfd sp!,{r2-r7,lr}
 	str r1,vram_map
 	b updateBGCHR_
 ;----------------------------------------------------------------------------
@@ -579,8 +689,11 @@ chr1_
 	and r0,r0,r2,lsr#10
 
 	strb r0,nes_chr_map+1
-	ldr r1,vrombase
-	add r1,r1,r0,lsl#10
+;	ldr r1,vrombase
+;	add r1,r1,r0,lsl#10
+	stmfd sp!,{r2-r7,lr}
+	bl get_real_vrom_address
+	ldmfd sp!,{r2-r7,lr}
 	str r1,vram_map+4
 	b updateBGCHR_
 ;----------------------------------------------------------------------------
@@ -590,8 +703,11 @@ chr2_
 	and r0,r0,r2,lsr#10
 
 	strb r0,nes_chr_map+2
-	ldr r1,vrombase
-	add r1,r1,r0,lsl#10
+;	ldr r1,vrombase
+;	add r1,r1,r0,lsl#10
+	stmfd sp!,{r2-r7,lr}
+	bl get_real_vrom_address
+	ldmfd sp!,{r2-r7,lr}
 	str r1,vram_map+8
 	b updateBGCHR_
 ;----------------------------------------------------------------------------
@@ -601,8 +717,11 @@ chr3_
 	and r0,r0,r2,lsr#10
 
 	strb r0,nes_chr_map+3
-	ldr r1,vrombase
-	add r1,r1,r0,lsl#10
+;	ldr r1,vrombase
+;	add r1,r1,r0,lsl#10
+	stmfd sp!,{r2-r7,lr}
+	bl get_real_vrom_address
+	ldmfd sp!,{r2-r7,lr}
 	str r1,vram_map+12
 	b updateBGCHR_
 ;----------------------------------------------------------------------------
@@ -612,8 +731,11 @@ chr4_
 	and r0,r0,r2,lsr#10
 
 	strb r0,nes_chr_map+4
-	ldr r1,vrombase
-	add r1,r1,r0,lsl#10
+;	ldr r1,vrombase
+;	add r1,r1,r0,lsl#10
+	stmfd sp!,{r2-r7,lr}
+	bl get_real_vrom_address
+	ldmfd sp!,{r2-r7,lr}
 	str r1,vram_map+16
 	b updateBGCHR_
 ;----------------------------------------------------------------------------
@@ -623,8 +745,11 @@ chr5_
 	and r0,r0,r2,lsr#10
 
 	strb r0,nes_chr_map+5
-	ldr r1,vrombase
-	add r1,r1,r0,lsl#10
+;	ldr r1,vrombase
+;	add r1,r1,r0,lsl#10
+	stmfd sp!,{r2-r7,lr}
+	bl get_real_vrom_address
+	ldmfd sp!,{r2-r7,lr}
 	str r1,vram_map+20
 	b updateBGCHR_
 ;----------------------------------------------------------------------------
@@ -634,8 +759,11 @@ chr6_
 	and r0,r0,r2,lsr#10
 
 	strb r0,nes_chr_map+6
-	ldr r1,vrombase
-	add r1,r1,r0,lsl#10
+;	ldr r1,vrombase
+;	add r1,r1,r0,lsl#10
+	stmfd sp!,{r2-r7,lr}
+	bl get_real_vrom_address
+	ldmfd sp!,{r2-r7,lr}
 	str r1,vram_map+24
 	b updateBGCHR_
 ;----------------------------------------------------------------------------
@@ -645,8 +773,11 @@ chr7_
 	and r0,r0,r2,lsr#10
 
 	strb r0,nes_chr_map+7
-	ldr r1,vrombase
-	add r1,r1,r0,lsl#10
+;	ldr r1,vrombase
+;	add r1,r1,r0,lsl#10
+	stmfd sp!,{r2-r7,lr}
+	bl get_real_vrom_address
+	ldmfd sp!,{r2-r7,lr}
 	str r1,vram_map+28
 	b updateBGCHR_
 ;----------------------------------------------------------------------------
@@ -660,8 +791,11 @@ chr01_
 	orr r1,r1,#1
 	strb r1,nes_chr_map+1
 
-	ldr r1,vrombase
-	add r1,r1,r0,lsl#11
+;	ldr r1,vrombase
+;	add r1,r1,r0,lsl#11
+	stmfd sp!,{r2-r7,lr}
+	bl get_real_vrom_address_2k
+	ldmfd sp!,{r2-r7,lr}
 	str r1,vram_map
 	add r1,r1,#0x400
 	str r1,vram_map+4
@@ -677,8 +811,11 @@ chr23_
 	orr r1,r1,#1
 	strb r1,nes_chr_map+3
 
-	ldr r1,vrombase
-	add r1,r1,r0,lsl#11
+;	ldr r1,vrombase
+;	add r1,r1,r0,lsl#11
+	stmfd sp!,{r2-r7,lr}
+	bl get_real_vrom_address_2k
+	ldmfd sp!,{r2-r7,lr}
 	str r1,vram_map+8
 	add r1,r1,#0x400
 	str r1,vram_map+12
@@ -694,8 +831,11 @@ chr45_
 	orr r1,r1,#1
 	strb r1,nes_chr_map+5
 
-	ldr r1,vrombase
-	add r1,r1,r0,lsl#11
+;	ldr r1,vrombase
+;	add r1,r1,r0,lsl#11
+	stmfd sp!,{r2-r7,lr}
+	bl get_real_vrom_address_2k
+	ldmfd sp!,{r2-r7,lr}
 	str r1,vram_map+16
 	add r1,r1,#0x400
 	str r1,vram_map+20
@@ -711,8 +851,11 @@ chr67_
 	orr r1,r1,#1
 	strb r1,nes_chr_map+7
 
-	ldr r1,vrombase
-	add r1,r1,r0,lsl#11
+;	ldr r1,vrombase
+;	add r1,r1,r0,lsl#11
+	stmfd sp!,{r2-r7,lr}
+	bl get_real_vrom_address_2k
+	ldmfd sp!,{r2-r7,lr}
 	str r1,vram_map+24
 	add r1,r1,#0x400
 	str r1,vram_map+28
@@ -729,8 +872,11 @@ chr0123_
 	orr r2,r2,r1,lsl#2
 	str r2,nes_chr_map
 
-	ldr r1,vrombase
-	add r1,r1,r0,lsl#12
+;	ldr r1,vrombase
+;	add r1,r1,r0,lsl#12
+	stmfd sp!,{r2-r7,lr}
+	bl get_real_vrom_address_4k
+	ldmfd sp!,{r2-r7,lr}
 	str r1,vram_map
 	add r1,r1,#0x400
 	str r1,vram_map+4
@@ -754,8 +900,11 @@ chr01234567_
 	orr r2,r2,r1,lsl#3
 	str r2,nes_chr_map+4
 
-	ldr r1,vrombase
-	add r1,r1,r0,lsl#13
+;	ldr r1,vrombase
+;	add r1,r1,r0,lsl#13
+	stmfd sp!,{r2-r7,lr}
+	bl get_real_vrom_address_8k
+	ldmfd sp!,{r2-r7,lr}
 	str r1,vram_map
 	add r1,r1,#0x400
 	str r1,vram_map+4
@@ -777,8 +926,11 @@ chr4567_
 	orr r2,r2,r1,lsl#2
 	str r2,nes_chr_map+4
 
-	ldr r1,vrombase
-	add r1,r1,r0,lsl#12
+;	ldr r1,vrombase
+;	add r1,r1,r0,lsl#12
+	stmfd sp!,{r2-r7,lr}
+	bl get_real_vrom_address_4k
+	ldmfd sp!,{r2-r7,lr}
 _4567	str r1,vram_map+16
 	add r1,r1,#0x400
 	str r1,vram_map+20
@@ -862,7 +1014,7 @@ chrfinish	;end of frame...  finish up BGxCNTBUFF
 	bl debug_
  ]
 
-	mov pc,addy
+	bx addy
 ;----------------------------------------------------------------------------
 resetBGCHR
 ;----------------------------------------------------------------------------
@@ -875,7 +1027,7 @@ resetBGCHR
 	ldrne r0,nes_chr_map+4
 	str r0,chrold
 
-	mov pc,lr
+	bx lr
 ;----------------------------------------------------------------------------
 updateOBJCHR	;sprite CHR update (r3-r7 killed)
 ;----------------------------------------------------------------------------
@@ -952,8 +1104,13 @@ bg0	 tst r1,#0xff
 	 addeq agbptr,agbptr,#0x800
 	 beq bg2
 	 mov tilecount,#64
-	 ldr nesptr,vrombase
-	 add nesptr,nesptr,r0,lsl#10	;bank#*$400
+	 
+	stmfd sp!,{r0-r2,r5-r7,lr}
+	bl get_real_vrom_address
+	mov nesptr,r1
+	ldmfd sp!,{r0-r2,r5-r7,lr}
+
+	 
  [ DEBUG
 	ldr r0,misscount
 	add r0,r0,#4
@@ -1026,6 +1183,7 @@ mapperstate
 	DCD 0,0		;agb_obj_map	vrom paging map for AGB OBJ CHR
 	DCB 0,0,0,0	;bg_recent	AGB BG CHR group#s ordered by most recently used
 romstart
+g_rombase
 	DCD 0 ;rombase
 romnum
 	DCD 0 ;romnumber
@@ -1035,12 +1193,31 @@ g_scaling	DCB SCALED_SPRITES ;(display type)
 	% 2   ;(sprite follow val)
 	DCD 0 ;BGmirror		(BG size for BG0CNT)
 
+g_rommask
 	DCD 0 ;rommask
+g_vrombase
 	DCD 0 ;vrombase
+g_vrommask
 	DCD 0 ;vrommask
 g_cartflags
 	DCB 0 ;cartflags
 g_hackflags
 	DCB 0 ;hackflags
+g_hackflags2
+	DCB 0 ;hackflags2
+g_mapper_number
+	DCB 0 ;mapper_number
+g_rompages
+	DCB 0 ;rompages
+g_vrompages
+	DCB 0 ;vrompages
+g_apu4017
+	DCB 0 ;apu_4017
+	DCB 0 ;doframeriq
+
+;;	DCD 0 ;pcmirqbakup
+;;	DCD 0 ;pcmirqcount
+
+
 ;----------------------------------------------------------------------------
 	END

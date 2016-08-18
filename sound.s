@@ -1,6 +1,8 @@
 	INCLUDE equates.h
 	INCLUDE ppu.h
 
+	IMPORT |wram_globals0$$Base|
+
 	EXPORT timer1interrupt
 	EXPORT Sound_reset
 	EXPORT updatesound
@@ -25,7 +27,8 @@
 	EXPORT _4013w
 	EXPORT _4015w
 	EXPORT _4015r
-	EXPORT pcmctrl
+	EXPORT _4017w
+	EXPORT _pcmctrl
 
 pcmirqbakup EQU mapperdata+24
 pcmirqcount EQU mapperdata+28
@@ -108,16 +111,19 @@ pcm_mix
 	orr r5,r0,r5,lsr#8
 	str r5,[r12],#4
 
-	b endmix
+	b_long endmix
 ;----------------------------------------------------------------------------
 
 
 
- AREA rom_code, CODE, READONLY ;-- - - - - - - - - - - - - - - - - - - - - -
+	AREA rom_code, CODE, READONLY ;-- - - - - - - - - - - - - - - - - - - - - -
 
 ;----------------------------------------------------------------------------
-Sound_reset
+Sound_reset_core
 ;----------------------------------------------------------------------------
+	stmfd sp!,{r4-r8,globalptr,lr}
+	ldr globalptr,=|wram_globals0$$Base|
+	
 	mov r1,#REG_BASE
 
 	ldrh r0,[r1,#REG_SGBIAS]
@@ -175,7 +181,7 @@ Sound_reset
 	mov r0,#0xc4				;enable+irq+count up
 	strh r0,[r1],#2
 
-make_freq_table
+make_freq_table_core
 	ldr r0,emuflags
 	tst r0,#PALTIMING
 	ldreq r2,=2400				;0x10000000/111860 NTSC
@@ -190,6 +196,8 @@ frqloop
 	subs r3,r3,#2
 	strh r0,[r12,r3]
 	bhi frqloop
+
+	ldmfd sp!,{r4-r8,globalptr,lr}
 
 	bx lr
 
@@ -209,7 +217,9 @@ PCMLIMIT	EQU 96<<24
 
 	;update DMA buffer for PCM
 
-	stmfd sp!,{r4-r8,lr}
+	stmfd sp!,{r4-r8,globalptr,lr}
+	ldr globalptr,=|wram_globals0$$Base|
+	
 	ldr r3,pcmcount			;r3=bytes remaining
 	ldr r12,=PCMWAV			;r12=dma buffer
 	ldr r0,pcmlevel			;r0=volume level
@@ -225,7 +235,7 @@ pcm0
 	subs r3,r3,#1			;pcmcount--
 	bmi pcm2
 	ldrb r2,[r1],#1			;next byte..
-	b pcm_mix
+	b_long pcm_mix
 endmix
 	cmp r12,r4
 	blo pcm0
@@ -259,7 +269,7 @@ clpcm 	str r0,[r12],#4
 
 pcmexit
 	str r3,pcmcount
-	ldmfd sp!,{r4-r8,pc}
+	ldmfd sp!,{r4-r8,globalptr,pc}
 ;----------------------------------------------------------------------------
 _4000w
 ;----------------------------------------------------------------------------
@@ -343,13 +353,6 @@ _4003w
 
 	mov pc,lr
 
-sq0freq	DCD 0
-saveSG11 DCD 0
-sq0timeout DCD 0
-sq0sweepnext DCD 0
-sweepctrl DCD 0
-sq0envelope DCD 0
-sq0enveloperate DCD 0
 ;----------------------------------------------------------------------------
 _4004w
 ;----------------------------------------------------------------------------
@@ -426,12 +429,6 @@ _4007w
 
 	mov pc,lr
 
-sq1freq	DCD 0
-saveSG21 DCD 0
-sq1timeout DCD 0
-sq1sweepnext DCD 0
-sq1envelope DCD 0
-sq1enveloperate DCD 0
 ;----------------------------------------------------------
 _4008w
 	ldrb r1,soundctrl+2
@@ -484,9 +481,6 @@ _400bw
 	ldrb r0,soundctrl+2		;setup timer2
 	b _4008w2
 
-trifreq DCD 0
-tritimeout1 DCD 0
-tritimeout2 DCD 0
 ;----------------------------------------------------------
 _400cw
 ;----------------------------------------------------------
@@ -539,10 +533,6 @@ _400fw
 
 	mov pc,lr
 
-noisetimeout DCD 0
-noiseenvelope DCD 0
-noiseenveloperate DCD 0
-saveSG41 DCD 0
 ;----------------------------------------------------------
 _4010w
 ;----------------------------------------------------------
@@ -597,13 +587,6 @@ _4013w	;returns pcmlength
 	str r0,pcmlength
 
 	mov pc,lr
-
-pcmctrl DCD 0		;bit7=irqen, bit6=loop.  bit 12=PCM enable (from $4015). bits 8-15=old $4015
-pcmlength DCD 0		;total bytes
-pcmcount DCD 0		;bytes remaining
-pcmstart DCD 0		;starting addr
-pcmcurrentaddr DCD 0	;current addr
-pcmlevel DCD 0
 
 ;  (GBA CPU / NES CPU*8)*cycles
 ;-(16777216/14318180)*N
@@ -720,7 +703,6 @@ asdf				;channels 1-4:
 
 	ldmfd sp!,{r3,pc}
 
-soundmask DCD 0		;mask for SGCNT_L
 ;----------------------------------------------------------------------------
 _4015r
 ;----------------------------------------------------------------------------
@@ -730,12 +712,19 @@ _4015r
 	and r1,r1,#0x90		;only read channel 5 and pcm IRQ
 	orr r0,r1,r0,lsr#12
 
+	;frame irq?
+	ldrb r1,doframeirq
+	orr r0,r0,r1
+	mov r1,#0
+	strb r1,doframeirq
+	
 	mov pc,lr
 ;----------------------------------------------------------------------------
 updatesound	;called from line 0..  r0-r9 are free to use
 ;----------------------------------------------------------------------------
 	mov r9,lr
 	mov addy,#REG_BASE
+	ldr globalptr,=|wram_globals0$$Base|
 
 	ldr r4,soundctrl	;process all timers:
 	ldrh r2,[addy,#REG_SGCNT_L]
@@ -895,6 +884,51 @@ us12
 us13
 	mov pc,r9
 
-soundctrl DCD 0		;1st control reg for ch1-4
 ;----------------------------------------------------------------------------
+_4017w
+;----------------------------------------------------------------------------
+	;for frame IRQ
+	and r0,r0,#0xC0
+	strb r0,apu_4017
+	mov pc,lr
+
+Sound_reset
+	b_long Sound_reset_core
+make_freq_table
+	stmfd sp!,{r4-r8,globalptr,lr}
+	ldr globalptr,=|wram_globals0$$Base|
+	b_long make_freq_table_core
+
+	AREA wram_globals3, CODE, READWRITE
+_sq0freq	DCD 0
+_saveSG11 DCD 0
+_sq0timeout DCD 0
+_sq0sweepnext DCD 0
+_sweepctrl DCD 0
+_sq0envelope DCD 0
+_sq0enveloperate DCD 0
+_sq1freq	DCD 0
+_saveSG21 DCD 0
+_sq1timeout DCD 0
+_sq1sweepnext DCD 0
+_sq1envelope DCD 0
+_sq1enveloperate DCD 0
+_trifreq DCD 0
+_tritimeout1 DCD 0
+_tritimeout2 DCD 0
+_noisetimeout DCD 0
+_noiseenvelope DCD 0
+_noiseenveloperate DCD 0
+_saveSG41 DCD 0
+_pcmctrl DCD 0		;bit7=irqen, bit6=loop.  bit 12=PCM enable (from $4015). bits 8-15=old $4015
+_pcmlength DCD 0		;total bytes
+_pcmcount DCD 0		;bytes remaining
+_pcmstart DCD 0		;starting addr
+_pcmcurrentaddr DCD 0	;current addr
+_pcmlevel DCD 0
+_freqtbl DCD 0
+_soundmask DCD 0		;mask for SGCNT_L
+_soundctrl DCD 0		;1st control reg for ch1-4
+
+
 	END

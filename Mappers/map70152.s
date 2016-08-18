@@ -17,18 +17,18 @@ mapper152init	;Saint Seiya ..
 	DCD write152,write152,write152,write152
 
 	movs r0,#1
-	b mirror1_
+	b_long mirror1_
 
 ;-------------------------------------------------------
 write152
 ;-------------------------------------------------------
 	mov addy,r0,lsr#4
 	stmfd sp!,{addy,lr}
-	bl chr01234567_
+	bl_long chr01234567_
 	tst addy,#0x8
-	bl mirror1_
+	bl_long mirror1_
 	ldmfd sp!,{r0,lr}
-	b map89AB_
+	b_long map89AB_
 
 ;-------------------------------------------------------
 	END

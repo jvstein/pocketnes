@@ -9,6 +9,7 @@
 	INCLUDE io.h
 
 	EXPORT mapper17init
+	EXPORT mapper_17_hook
 
 counter EQU mapperdata+0
 enable EQU mapperdata+4
@@ -20,7 +21,7 @@ mapper17init
 	adr r1,write0
 	str r1,writemem_tbl+8
 
-	adr r0,hook
+	adr r0,mapper_17_hook
 	str r0,scanlinehook
 
 	mov pc,lr
@@ -28,7 +29,7 @@ mapper17init
 write0
 ;-------------------------------------------------------
 	cmp addy,#0x4100
-	blo IO_W
+	blo_long IO_W
 
 	and r2,addy,#0xff
 	cmp r2,#0xfe
@@ -48,10 +49,10 @@ jmptbl	DCD void,_1,_2,_3,map89_,mapAB_,mapCD_,mapEF_
 
 _fe
 	tst r0,#0x10
-	b mirror1_
+	b_long mirror1_
 _ff
 	tst r0,#0x10
-	b mirror2V_
+	b_long mirror2V_
 _1
 	and r0,r0,#1
 	strb r0,enable
@@ -65,7 +66,7 @@ _3
 	strb r1,enable
 	mov pc,lr
 ;-------------------------------------------------------
-hook
+mapper_17_hook
 ;------------------------------------------------------
 	ldrb r0,enable
 	cmp r0,#0
@@ -75,7 +76,7 @@ hook
 	adds r0,r0,#0x10000
 	str r0,counter
 ;	bcs irq6502
-	bcs CheckI
+	bcs_long CheckI
 h1
 	fetch 0
 ;-------------------------------------------------------

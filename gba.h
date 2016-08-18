@@ -1,9 +1,18 @@
 #ifndef GBA_HEADER
 #define GBA_HEADER
 
+typedef int bool;
+#define true 1
+#define false 0
+#define NULL 0
+
 typedef unsigned char u8;
 typedef unsigned short u16;
 typedef unsigned long u32;
+
+typedef signed char s8;
+typedef signed short s16;
+typedef signed long s32;
 
 typedef volatile unsigned char vu8;
 typedef volatile unsigned short vu16;
@@ -23,7 +32,7 @@ typedef struct {
 #define MEM_VRAM (u16*)0x6000000
 #define MEM_OAM (u32*)0x7000000
 #define MEM_SRAM (u8*)0xE000000
-#define NES_SRAM (u8*)0x3005000	//from equates.h
+
 #define INTR_VECT *(u32*)0x3007FFC
 #define SCREENBASE (u16*)0x6003000
 
@@ -67,6 +76,11 @@ typedef struct {
 #define REG_BG1CNT *(u16*)0x400000a
 #define REG_BG2CNT *(u16*)0x400000c
 #define REG_BG3CNT *(u16*)0x400000e
+#define REG_WIN0H *(u16*)0x4000040
+#define REG_WIN0V *(u16*)0x4000044
+#define REG_WININ *(u16*)0x4000048
+#define REG_WINOUT *(u16*)0x400004A
+
 #define COLOR16 0x0000
 #define COLOR256 0x0080
 #define SIZE256x256 0x0000
@@ -100,6 +114,11 @@ typedef struct {
 #define REG_BLDALPHA *(u16*)0x4000052
 #define REG_BLDY *(u16*)0x4000054
 #define REG_SGCNT0_L *(u16*)0x4000080
+
+#define REG_SG1CNT_L *(u16*)0x4000060
+#define REG_SG1CNT_H *(u16*)0x4000062
+#define REG_SG1CNT_X *(u16*)0x4000064
+
 #define REG_SGBIAS *(u16*)0x4000088
 #define REG_BG2X *(u32*)0x4000028
 #define REG_BG2Y *(u32*)0x400002c

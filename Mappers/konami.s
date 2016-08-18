@@ -67,7 +67,7 @@ Konami_IRQ_Hook
 
 	strb r0,counter	;copy latch to counter
 ;	b irq6502
-	b CheckI
+	b_long CheckI
 h0
 	str r0,latch
 h1

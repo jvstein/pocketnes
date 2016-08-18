@@ -8,6 +8,7 @@
 	INCLUDE 6502mac.h
 
 	EXPORT mapper18init
+	EXPORT mapper_18_hook
 
 prg_xx EQU mapperdata+0 ;4 bytes
 chr_xx EQU mapperdata+4 ;8 bytes
@@ -19,7 +20,7 @@ mapper18init	;Jaleco SS8806..
 ;----------------------------------------------------------------------------
 	DCD write8000,writeA000,writeC000,writeE000
 
-	adr r0,hook
+	adr r0,mapper_18_hook
 	str r0,scanlinehook
 
 	mov pc,lr
@@ -94,12 +95,12 @@ wF1 ;- - - - - - - - - - - - - - -
 wF2 ;- - - - - - - - - - - - - - -
 	movs r1,r0,lsr#2
 	tst r0,#1
-	bcc mirror2H_
-	bcs mirror1_
+	bcc_long mirror2H_
+	bcs_long mirror1_
 
 writeFtbl DCD wE0,wE1,wE2,wE3,wF0,wF1,wF2,void
 ;-------------------------------------------------------
-hook
+mapper_18_hook
 ;------------------------------------------------------
 	ldrb r0,irqen
 	cmp r0,#0	;timer active?
@@ -115,7 +116,7 @@ hook
 	str r0,counter	;clear counter and IRQenable.
 	strb r0,irqen
 ;	b irq6502
-	b CheckI
+	b_long CheckI
 h0
 	str r0,counter
 h1

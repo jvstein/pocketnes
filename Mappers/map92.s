@@ -21,9 +21,9 @@ write0		; Moero!! Pro Yakyuu '88
 	and r0,addy,#0xff
 	mov r1,r0,lsr#4
 	cmp r1,#0xB
-	beq mapCDEF_
+	beq_long mapCDEF_
 	cmp r1,#0x7
-	beq chr01234567_
+	beq_long chr01234567_
 	mov pc,lr
 ;-------------------------------------------------------
 write1		; Moero!! Pro Soccer
@@ -31,9 +31,9 @@ write1		; Moero!! Pro Soccer
 	and r0,addy,#0xff
 	mov r1,r0,lsr#4
 	cmp r1,#0xD
-	beq mapCDEF_
+	beq_long mapCDEF_
 	cmp r1,#0xE
-	beq chr01234567_
+	beq_long chr01234567_
 	mov pc,lr
 ;-------------------------------------------------------
 	END

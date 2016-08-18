@@ -37,7 +37,7 @@ write8000
 write9000
 	orr addy,addy,addy,lsr#2
 	ands addy,addy,#3
-	beq mirrorKonami_
+	beq_long mirrorKonami_
 	cmp addy,#1
 	movne pc,lr
 w91
@@ -48,21 +48,21 @@ romswitch
 	tst r0,#2
 	mov r0,#-2
 	bne reverseMap
-	bl mapCD_
+	bl_long mapCD_
 	mov lr,addy
 	ldrb r0,k4map1
-	b map89_
+	b_long map89_
 reverseMap
-	bl map89_
+	bl_long map89_
 	mov lr,addy
 	ldrb r0,k4map1
-	b mapCD_
+	b_long mapCD_
 
 ;-------------------------------------------------------
 writeA000
 ;-------------------------------------------------------
 	tst addy,#0x1000
-	beq mapAB_
+	beq_long mapAB_
 writeC000	;addy=B/C/D/Exxx
 ;-------------------------------------------------------
 	sub r2,addy,#0xB000

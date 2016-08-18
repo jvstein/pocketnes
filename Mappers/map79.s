@@ -19,12 +19,12 @@ mapper79init
 	str r1,writemem_tbl+8
 
 	mov r0,#0xff
-	b map89ABCDEF_
+	b_long map89ABCDEF_
 ;-------------------------------------------------------
 write0
 ;-------------------------------------------------------
 	cmp addy,#0x4100
-	blo IO_W
+	blo_long IO_W
 
 	and r1,addy,#0xE100
 	cmp r1,#0x4100
@@ -32,9 +32,9 @@ write0
 
 	stmfd sp!,{r0,lr}
 	mov r0,r0,lsr#3
-	bl map89ABCDEF_
+	bl_long map89ABCDEF_
 	ldmfd sp!,{r0,lr}
-	b chr01234567_
+	b_long chr01234567_
 
 ;-------------------------------------------------------
 	END

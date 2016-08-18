@@ -1,0 +1,9 @@
+del *.lst
+del main.s
+del ui.s
+del mbclient.s
+del sram.s
+del gbamp_cf.s
+del gba_nds_fat.s
+del minilzo.s
+del gbabin\*.o

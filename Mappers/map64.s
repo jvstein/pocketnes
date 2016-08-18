@@ -8,6 +8,7 @@
 	INCLUDE 6502mac.h
 
 	EXPORT mapper64init
+	EXPORT RAMBO_IRQ_Hook
 
 countdown EQU mapperdata+0
 latch EQU mapperdata+1
@@ -42,35 +43,35 @@ commandlist	DCD cmd0,cmd1,chr4_,chr5_,chr6_,chr7_,map89_,mapAB_
 cmd0			;0000-07ff
 	ldrb r1,cmd
 	tst r1,#0x20
-	bne chr0_
+	bne_long chr0_
 	mov r0,r0,lsr#1
-	b chr01_
+	b_long chr01_
 cmd1			;0800-0fff
 	ldrb r1,cmd
 	tst r1,#0x20
-	bne chr2_
+	bne_long chr2_
 	mov r0,r0,lsr#1
-	b chr23_
+	b_long chr23_
 
 cmd0x			;1000-17ff
 	ldrb r1,cmd
 	tst r1,#0x20
 	moveq pc,lr
 	mov r0,r0,lsr#1
-	b chr1_
+	b_long chr1_
 cmd1x			;1800-1fff
 	ldrb r1,cmd
 	tst r1,#0x20
 	moveq pc,lr
 	mov r0,r0,lsr#1
-	b chr3_
+	b_long chr3_
 ;----------------------------------------------------------------------------
 write1		;$A000-A001
 ;----------------------------------------------------------------------------
 	tst addy,#1
 	movne pc,lr
 	tst r0,#1
-	b mirror2V_
+	b_long mirror2V_
 ;----------------------------------------------------------------------------
 write2		;C000-C001
 ;----------------------------------------------------------------------------
@@ -109,7 +110,7 @@ RAMBO_IRQ_Hook
 ;	mov r1,#0
 ;	strb r1,irqen
 ;	b irq6502
-	b CheckI
+	b_long CheckI
 hk0
 	fetch 0
 	END

@@ -15,7 +15,7 @@ extern char pogoshell;
 
 romheader mb_header;
 
-u32 max_multiboot_size;		//largest possible multiboot transfer (init'd by boot.s)
+extern u32 max_multiboot_size;		//largest possible multiboot transfer (init'd by boot.s)
 
 typedef struct {
   u32 reserve1[5];      //

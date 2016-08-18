@@ -49,14 +49,14 @@ map71w
 ;	tst addy,#0x1000
 ;	moveq pc,lr
 	tst r0,#0x10
-	b mirror1_
+	b_long mirror1_
 ;------------------------------
 write0
 ;------------------------------
 	stmfd sp!,{r0,lr}
 	tst r0,#0x10
-	bl mirror1_
+	bl_long mirror1_
 	ldmfd sp!,{r0,lr}
-	b map89ABCDEF_
+	b_long map89ABCDEF_
 ;----------------------------------------------------------------------------
 	END

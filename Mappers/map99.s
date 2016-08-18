@@ -29,9 +29,9 @@ write4016
 	stmfd sp!,{r0,lr}
 
 	mov r0,r0,lsr#2
-	bl chr01234567_
+	bl_long chr01234567_
 
 	ldmfd sp!,{r0,lr}
-	b joy0_W
+	b_long joy0_W
 ;----------------------------------
 	END

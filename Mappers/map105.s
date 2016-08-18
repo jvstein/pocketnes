@@ -8,6 +8,7 @@
 	INCLUDE 6502mac.h
 
 	EXPORT mapper105init
+	EXPORT mapper_105_hook
 
 counter EQU mapperdata+0
 reg0 EQU mapperdata+4
@@ -39,7 +40,7 @@ mapper105init
 ;----------------------------------------------------------------------------
 	DCD write0,write1,void,write3
 
-	adr r0,hook
+	adr r0,mapper_105_hook
 	str r0,scanlinehook
 
 	mov r0,#0x0c	;init MMC1 regs
@@ -58,7 +59,7 @@ mapper105init
 ;	strb r0,reg0
 
 	mov r0,#0
-	b map89ABCDEF_
+	b_long map89ABCDEF_
 reset
 	mov r0,#0
 	strb r0,latch
@@ -95,12 +96,12 @@ w0;----
 	bne w01
 
 	tst r0,#0x01
-	bl mirror1_
+	bl_long mirror1_
 	mov lr,addy
 	b romswitch
 w01
 	tst r0,#0x01
-	bl mirror2V_
+	bl_long mirror2V_
 	mov lr,addy
 	b romswitch
 ;----------------------------------------------------------------------------
@@ -141,24 +142,24 @@ romswitch;
 	tst r1,#0x04
 	beq rs0
 
-	bl map89AB_	;map low bank
+	bl_long map89AB_	;map low bank
 	orr r0,addy,#0x0f
 	ldr lr,[sp],#4
-	b mapCDEF_	;hardwired high bank
+	b_long mapCDEF_	;hardwired high bank
 rs0
-	bl mapCDEF_	;map high bank
+	bl_long mapCDEF_	;map high bank
 	and r0,addy,#0x08
 	ldr lr,[sp],#4
-	b map89AB_	;hardwired low bank
+	b_long map89AB_	;hardwired low bank
 rs1				;switch 32k:
 	mov r0,r0,lsr#1
-	b map89ABCDEF_
+	b_long map89ABCDEF_
 rs2				;switch 32k / low 128k:
 	mov r0,r0,lsr#1
 	and r0,r0,#0x3
-	b map89ABCDEF_
+	b_long map89ABCDEF_
 ;----------------------------------------------------------------------------
-hook
+mapper_105_hook
 ;----------------------------------------------------------------------------
 
 	ldrb r1,reg1
@@ -175,7 +176,7 @@ hook
 ;	mov r1,#0
 ;	str r1,counter
 ;	b irq6502
-	b CheckI
+	b_long CheckI
 hk0
 	fetch 0
 ;----------------------------------------------------------------------------

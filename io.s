@@ -23,6 +23,7 @@
 	EXPORT LZ77UnCompVram
 	EXPORT CheckGBAVersion
 	EXPORT gbpadress
+	EXPORT empty_io_w_hook
 
 
  AREA rom_code, CODE, READONLY ;-- - - - - - - - - - - - - - - - - - - - - -
@@ -249,7 +250,7 @@ IO_W		;I/O write
 	sub r2,addy,#0x4000
 	cmp r2,#0x18
 	ldrmi pc,[pc,r2,lsl#2]
-	b empty_W
+	ldr pc,[pc,#0x5C]
 io_write_tbl
 	DCD _4000w
 	DCD _4001w
@@ -275,7 +276,9 @@ io_write_tbl
 	DCD _4015w
 joypad_write_ptr
 	DCD joy0_W	;$4016: Joypad 0 write
-	DCD void	;$4017: ?
+	DCD _4017w	;$4017: frame irq
+empty_io_w_hook
+	DCD empty_W
 
 ;----------------------------------------------------------------------------
 dma_W	;(4014)		sprite DMA transfer
@@ -717,7 +720,7 @@ multi				;r2=joycfg
 	bl xmit			;send joypad data for NEXT frame
 	movne pc,r6		;send was incomplete!
 
-	strb r2,joy0state		;master is player 1
+	strb r2,joy0state		;master is player 1
 	mov r2,r2,lsr#16
 	strb r2,joy1state		;slave1 is player 2
 	ldr r4,nrplayers
@@ -762,7 +765,8 @@ stage1		;other GBA wants to reset
 	ldrb r3,received0	;slaves uses master's timing flags
 	bic r1,r1,#USEPPUHACK+NOCPUHACK+PALTIMING
 	orr r1,r1,r3
-sg1	bl loadcart		;game reset
+sg1	
+	bl_long loadcart		;game reset
 
 	mov r1,#0
 	str r1,sending		;reset sequence numbers

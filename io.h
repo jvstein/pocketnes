@@ -8,4 +8,5 @@
 	IMPORT suspend
 	IMPORT refreshNESjoypads
 	IMPORT serialinterrupt
+	IMPORT empty_io_w_hook
 	END

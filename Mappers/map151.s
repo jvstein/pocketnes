@@ -1,4 +1,4 @@
-	AREA wram_code3, CODE, READWRITE
+	AREA rom_code, CODE, READONLY
 
 	INCLUDE equates.h
 	INCLUDE memory.h
@@ -16,6 +16,9 @@ mapper151init
 	strb r0,cartflags
 
 	mov pc,lr
+;----------------------------------------------------------------------------
+	AREA wram_code3, CODE, READWRITE
+;----------------------------------------------------------------------------
 ;----------------------------------------------
 write0
 ;----------------------------------------------

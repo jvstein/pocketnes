@@ -95,7 +95,8 @@ hook
 	strb r0,enable
 	sub r0,r0,#0x10000
 	str r0,counter
-	b irq6502
+;	b irq6502
+	b CheckI
 h1
 	fetch 0
 

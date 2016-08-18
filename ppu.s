@@ -6,8 +6,8 @@
 	INCLUDE sound.h
 	INCLUDE mappers.h
 
-	EXPORT ppu_init
-	EXPORT ppureset_
+	EXPORT PPU_init
+	EXPORT PPU_reset
 	EXPORT PPU_R
 	EXPORT PPU_W
 	EXPORT agb_nt_map
@@ -16,7 +16,7 @@
 	EXPORT VRAM_chr
 	EXPORT debug_
 	EXPORT AGBinput
-	EXPORT NESinput
+	EXPORT EMUinput
 	EXPORT paletteinit
 	EXPORT PaletteTxAll
 	EXPORT newframe
@@ -179,7 +179,7 @@ gloop0
 
 	ldr r6,=MAPPED_RGB
 	mov r7,r6
-	ldr r1,gammavalue	;gamma value = 0 -> 4
+	ldrb r1,gammavalue	;gamma value = 0 -> 4
 	mov r4,#64			;pce rgb, r1=R, r2=G, r3=B
 gloop					;map 0bbbbbgggggrrrrr  ->  0bbbbbgggggrrrrr
 	ldrb r0,[r6],#1
@@ -208,7 +208,6 @@ gammaconvert;	takes value in r0(0-0xFF), gamma in r1(0-4),returns new value in r
 	rsb r2,r0,#0x100
 	mul r3,r2,r2
 	rsbs r2,r3,#0x10000
-;	subne r2,r2,#0x2a8			;Tweak for Gamma #4...
 	rsb r3,r1,#4
 	orr r0,r0,r0,lsl#8
 	mul r2,r1,r2
@@ -235,7 +234,7 @@ pxall
 	bx lr
 
 ;----------------------------------------------------------------------------
-ppu_init	;(called from main.c) only need to call once
+PPU_init	;(called from main.c) only need to call once
 ;----------------------------------------------------------------------------
 	mov addy,lr
 
@@ -262,30 +261,18 @@ ppi0	mov r0,#0
 	adds r1,r1,#1
 	bne ppi0
 
-;	mov r0,#0
-	mov r0,#0x0440
-	orr r0,r0,r0,lsl#16
-	ldr r1,=DMA1BUFF	;clear DISPCNT+DMA1BUFF
-	mov r2,#404/2
-	bl filler_
-
 	mov r1,#REG_BASE
 	mov r0,#0x0008
 	strh r0,[r1,#REG_DISPSTAT]	;vblank en
 
-	mov r0,#7
-	strh r0,[r1,#REG_COLY]	;darkness setting for faded screens (bigger number=darker)
-
 	add r0,r1,#REG_BG0HOFS		;DMA0 always goes here
 	str r0,[r1,#REG_DM0DAD]
-	mov r0,#1			;1 word transfer
+	mov r0,#1					;1 word transfer
 	strh r0,[r1,#REG_DM0CNT_L]
-	ldr r0,=DMA0BUFF+4		;dmasrc=
+	ldr r0,=DMA0BUFF+4			;dmasrc=
 	str r0,[r1,#REG_DM0SAD]
 
 	str r1,[r1,#REG_DM1DAD]		;DMA1 goes here
-	mov r0,#1			;1 word transfer
-	strh r0,[r1,#REG_DM1CNT_L]
 
 	add r2,r1,#REG_IE
 	mov r0,#-1
@@ -301,8 +288,9 @@ ppi0	mov r0,#0
 
 	bx addy
 ;----------------------------------------------------------------------------
-ppureset_	;called with CPU reset
+PPU_reset	;called with CPU reset
 ;----------------------------------------------------------------------------
+	str lr,[sp,#-4]!
 	mov r0,#0
 	strb r0,ppuctrl0	;NMI off
 	strb r0,ppuctrl1	;screen off
@@ -314,7 +302,34 @@ ppureset_	;called with CPU reset
 	;mov r0,#1
 	;strb r0,vramaddrinc
 
-	b paletteinit	;do palette mapping (for VS) & gamma
+	mov r0,#0x0440
+	ldr r1,=ctrl1old
+	str r0,[r1]
+	orr r0,r0,r0,lsl#16
+	ldr r1,=DMA1BUFF	;clear DISPCNT+DMA1BUFF
+	mov r2,#404/2
+	bl filler_
+
+	mov r0,#0
+	ldr r1,=NES_VRAM
+	mov r2,#0x3000/4
+	bl filler_			;clear nes VRAM
+
+	;ldr r1,=MEM_AGB_SCREEN	;clear AGB BG
+	;mov r2,#32*32*2
+	;bl filler_
+
+	mov r0,#0xe0		;was 0xe0
+	mov r1,#AGB_OAM
+	mov r2,#0x100
+	bl filler_			;no stray sprites please
+	ldr r1,=OAM_BUFFER1
+	mov r2,#0x180
+	bl filler_
+
+	bl paletteinit		;do palette mapping (for VS) & gamma
+	ldr lr,[sp],#4
+	bx lr
 ;----------------------------------------------------------------------------
 showfps_		;fps output, r0-r3=used.
 ;----------------------------------------------------------------------------
@@ -358,12 +373,6 @@ db1
 
 	bx lr
 ;----------------------------------------------------------------------------
-gammavalue DCD 0
-fpstext DCB "FPS:    "
-fpsenabled DCB 0
-fpschk	DCB 0
-		DCB 0,0
-;----------------------------------------------------------------------------
 debug_		;debug output, r0=val, r1=line, r2=used.
 ;----------------------------------------------------------------------------
  [ DEBUG
@@ -381,7 +390,12 @@ db0
 	bne db0
  ]
 	bx lr
-
+;----------------------------------------------------------------------------
+fpstext DCB "FPS:    "
+fpsenabled DCB 0
+fpschk	DCB 0
+gammavalue DCB 0
+		DCB 0
 ;----------------------------------------------------------------------------
 	AREA wram_code1, CODE, READWRITE
 irqhandler	;r0-r3,r12 are safe to use
@@ -462,16 +476,28 @@ nopal60
 	ldr r1,dmascrollbuff
 	ldrb r0,emuflags+1
 	cmp r0,#SCALED
-	bhs vbl0
+	bhs vblscaled
 
+vblunscaled
 	ldr r0,windowtop+12
 	add r1,r1,r0,lsl#2		;(unscaled)
-vbl6	ldmia r1!,{r0,r4-r7}
-	stmia r2!,{r0,r4-r7}
+vbl6
+	ldmia r1!,{r4-r7}
+	add r4,r4,r0,lsl#16
+	add r5,r5,r0,lsl#16
+	add r6,r6,r0,lsl#16
+	add r7,r7,r0,lsl#16
+	stmia r2!,{r4-r7}
 	cmp r2,r3
 	bmi vbl6
+
+	ldr r3,=DISPCNTBUFF
+	ldr r4,=BG0CNTBUFF
+	add r3,r3,r0,lsl#1
+	add r4,r4,r0,lsl#1
 	b vbl5
-vbl0					;(scaled)
+
+vblscaled					;(scaled)
 	mov r4,#YSTART*65536
 	add r1,r1,#2
 
@@ -487,70 +513,56 @@ vbl0					;(scaled)
 		add r0,r0,r5
 		ands r0,r0,#3
 		str r0,totalblend
-		beq vbl2
-		cmp r0,#1
 		beq vbl3
 		cmp r0,#2
-		beq vbl4
-
-vbl1	ldr r0,[r1],#4
-	add r0,r0,r4
-	str r0,[r2],#4
+		bhi vbl2
+		addmi r1,r1,#4
+vbl1
+		addmi r4,r4,#0x10000
+		ldr r0,[r1],#4
+		add r0,r0,r4
+		str r0,[r2],#4
 vbl2	ldr r0,[r1],#4
-	add r0,r0,r4
-	str r0,[r2],#4
-vbl3	ldr r0,[r1],#4
-	add r0,r0,r4
-	str r0,[r2],#4
-vbl4	add r1,r1,#4
-	add r4,r4,#0x10000
+		add r0,r0,r4
+		str r0,[r2],#4
+vbl3	ldr r0,[r1],#8
+		add r0,r0,r4
+		str r0,[r2],#4
 	cmp r2,r3
 	bmi vbl1
+
+	ldr r3,=DMA1BUFF
+	ldr r4,=DMA3BUFF
 vbl5
 
-	ldrb r0,emuflags+1             ;get DMA1,3 source..
-	cmp r0,#SCALED
-	ldrhs r3,=DMA1BUFF
-	ldrhs r4,=DMA3BUFF
-	bhs vbl7
-	ldr r0,windowtop+12
-	ldr r3,=DISPCNTBUFF
-	ldr r4,=BG0CNTBUFF
-	add r3,r3,r0,lsl#1
-	add r4,r4,r0,lsl#1
-vbl7
-	mov r1,#REG_BASE
-	strh r1,[r1,#REG_DM0CNT_H]	;DMA stop
-	strh r1,[r1,#REG_DM1CNT_H]
-	strh r1,[r1,#REG_DM3CNT_H]
+	mov r5,#REG_BASE
+	strh r5,[r5,#REG_DM0CNT_H]		;DMA0 stop
+	strh r5,[r5,#REG_DM1CNT_H]		;DMA1 stop
+	strh r5,[r5,#REG_DM3CNT_H]		;DMA3 stop
 
-	ldr r0,dmaoambuffer		;OAM transfer:
-	str r0,[r1,#REG_DM3SAD]
-	mov r0,#AGB_OAM
-	str r0,[r1,#REG_DM3DAD]
-	mov r0,#0x84000000			;noIRQ hblank 32bit repeat incsrc fixeddst
-	orr r0,r0,#0x80				;128 words (512 bytes)
-	str r0,[r1,#REG_DM3CNT_L]		;DMA go
+	add r7,r5,#REG_DM3SAD
 
-	ldr r0,=DMA0BUFF		;setup HBLANK DMA for display scroll:
-	ldr r2,[r0],#4
-	str r2,[r1,#REG_BG0HOFS]		;set 1st value manually, HBL is AFTER 1st line
-	ldr r0,=0xA660				;noIRQ hblank 32bit repeat incsrc inc_reloaddst
-	strh r0,[r1,#REG_DM0CNT_H]		;DMA go
-					;setup HBLANK DMA for DISPCNT (BG/OBJ enable)
-	ldrh r2,[r3],#2
-	strh r2,[r1,#REG_DISPCNT]		;set 1st value manually, HBL is AFTER 1st line
-	str r3,[r1,#REG_DM1SAD]			;dmasrc=
-	ldr r0,=0xA240				;noIRQ hblank 16bit repeat incsrc fixeddst
-	strh r0,[r1,#REG_DM1CNT_H]		;DMA go
-					;setup HBLANK DMA for BG CHR
-	add r0,r1,#REG_BG0CNT
-	str r0,[r1,#REG_DM3DAD]
-	ldr r2,[r4],#2
-	strh r2,[r1,#REG_BG0CNT]
-	str r4,[r1,#REG_DM3SAD]
-	ldr r0,=0xA2400001			;noIRQ hblank 16bit repeat incsrc fixeddst, 1 word transfer
-	str r0,[r1,#REG_DM3CNT_L]		;DMA go
+	ldr r0,dmaoambuffer				;DMA3 src, OAM transfer:
+	mov r1,#AGB_OAM					;DMA3 dst
+	mov r2,#0x84000000				;noIRQ hblank 32bit repeat incsrc fixeddst
+	orr r2,r2,#0x80					;128 words (512 bytes)
+	stmia r7,{r0-r2}				;DMA3 go
+
+	ldr r0,=DMA0BUFF				;setup HBLANK DMA for display scroll:
+	ldr r0,[r0]
+	str r0,[r5,#REG_BG0HOFS]		;set 1st value manually, HBL is AFTER 1st line
+	ldr r0,=0xA660					;noIRQ hblank 32bit repeat incsrc inc_reloaddst
+	strh r0,[r5,#REG_DM0CNT_H]		;DMA0 go
+
+	ldrh r0,[r3],#2					;setup HBLANK DMA for DISPCNT (BG/OBJ enable)
+	strh r0,[r5,#REG_DISPCNT]		;set 1st value manually, HBL is AFTER 1st line
+	str r3,[r5,#REG_DM1SAD]			;DMA1 src
+	ldr r6,=0xA2400001				;noIRQ hblank 16bit repeat incsrc fixeddst, 1 word transfer
+	str r6,[r5,#REG_DM1CNT_L]		;DMA1 go
+
+	ldrh r2,[r4],#2					;setup HBLANK DMA for BG CHR
+	strh r2,[r5,#REG_BG0CNT]!		;DMA3 dst
+	stmia r7,{r4-r6}				;DMA3 go
 
 	ldmfd sp!,{r4-r7,globalptr,pc}
 
@@ -570,27 +582,25 @@ newframe	;called at line 0	(r0-r9 safe to use)
 	ldr r1,ctrl1line
 	mov addy,#239
 	bl ctrl1finish
-	mov r0,#0
-	str r0,ctrl1line
 ;-----------------------
-	bl chrfinish
-;------------------------
 	ldr r0,scrollXold
 	ldr r1,scrollXline
 	mov addy,#239
 	bl scrollXfinish
-	mov r0,#0
-	str r0,scrollXline
 ;--------------------------
 	ldr r0,scrollYold
 	ldr r1,scrollYline
 	mov addy,#239
 	bl scrollYfinish
 	mov r0,#0
+	str r0,ctrl1line
+	str r0,scrollXline
 	str r0,scrollYline
-	ldr r0,scrollY		;r0=y
+	ldr r0,scrollY			;r0=y
 	str r0,scrollYold
 ;--------------------------
+	bl chrfinish
+;------------------------
 ;	ldr r0,scrollY
 ;	mov r1,#0
 ;	bl initY
@@ -606,12 +616,12 @@ newframe	;called at line 0	(r0-r9 safe to use)
 	str r0,tmpoambuffer
 	str r1,dmaoambuffer
 
-	adrl r0,windowtop	;load wtop, store in wtop+4.......load wtop+8, store in wtop+12
-	ldmia r0,{r1-r3}	;load with post increment
-	stmib r0,{r1-r3}	;store with pre increment
+	adrl r0,windowtop		;load wtop, store in wtop+4.......load wtop+8, store in wtop+12
+	ldmia r0,{r1-r3}		;load with post increment
+	stmib r0,{r1-r3}		;store with pre increment
 
-	ldrb r0,emuflags+1             ;refresh DMA1,DMA2 buffers
-	cmp r0,#SCALED				;not needed for unscaled mode..
+	ldrb r0,emuflags+1		;refresh DMA1,DMA2 buffers
+	cmp r0,#SCALED			;not needed for unscaled mode..
 	bmi nf7					;(DMA'd directly from dispcntbuff/bg0cntbuff)
 
 	ldr r1,=DISPCNTBUFF+YSTART*2		;(scaled)
@@ -630,16 +640,15 @@ nf0	add r3,r2,#160*2
 		ldr r0,totalblend
 		ands r0,r0,#3
 		beq nf21
-		cmp r0,#1
-		beq nf22
 		cmp r0,#2
+		bmi nf22
 		addeq r1,r1,#2
 nf20	ldrh r0,[r1],#2
-	strh r0,[r2],#2
-nf21		ldrh r0,[r1],#2
+		strh r0,[r2],#2
+nf21	ldrh r0,[r1],#2
 		strh r0,[r2],#2
 nf22	ldrh r0,[r1],#4
-	strh r0,[r2],#2
+		strh r0,[r2],#2
 	cmp r2,r3
 	bmi nf20
 	mov pc,lr
@@ -769,7 +778,6 @@ stat_R		;(2002)
 	mov r0,#0
 	strb r0,toggle
 
-	ldrb nes_nz,ppustat
 	ldr r0,sprite0y		;sprite0 hit?
 	ldr r1,scanline
 	cmp r1,r0
@@ -778,12 +786,12 @@ stat_R		;(2002)
 ;	ldr r1,cyclesperscanline ;the store is in IO.s
 ;	sub r1,r1,cycles
 ;	cmp r1,r0
-	orrhi nes_nz,nes_nz,#0x40
+	ldrb r0,ppustat
+	orrhi r0,r0,#0x40
 ;nosprh
-	bic r0,nes_nz,#0x80		;vbl flag clear
-	strb r0,ppustat
+	bic r1,r0,#0x80		;vbl flag clear
+	strb r1,ppustat
 
-	orr nes_nz,nes_nz,nes_nz,lsl#24		;to set sign.
 	mov pc,lr
 ;----------------------------------------------------------------------------
 bgscroll_W	;(2005)
@@ -886,8 +894,6 @@ scrollYfinish		;newframe jumps here
 				;else
 	rsbls r4,r4,#240	;	r4=240-y&ff
 	sub r0,r0,r1		;y-=scanline
-	ldr r2,windowtop+8
-	add r0,r0,r2		;y+=windowtop
 	ldr r2,scrollbuff
 	add r2,r2,#2		;r2+=2, flag 2006 write
 	add r3,r2,addy,lsl#2	;r3=end2
@@ -925,14 +931,14 @@ vmdata_R	;(2007)
 	ldr r1,[r2,r1,lsr#8]
 	bic r0,r0,#0xfc00
 
-	ldrsb r1,[r1,r0]
-	ldr nes_nz,readtemp
+	ldrb r1,[r1,r0]
+	ldrb r0,readtemp
 	str r1,readtemp
 	mov pc,lr
 palread
 	and r0,r0,#0x1f
 	adr r1,nes_palette
-	ldrsb nes_nz,[r1,r0]
+	ldrb r0,[r1,r0]
 	mov pc,lr
 ;----------------------------------------------------------------------------
 vmdata_W	;(2007)
@@ -1071,8 +1077,10 @@ VRAM_pal	;write to VRAM palette area ($3F00-$3F1F)
 	adr r1,nes_palette
 	strb r0,[r1,addy]	;store in nes palette
 
+	add r0,r0,r0
 	ldr r1,=MAPPED_RGB
-	ldr r0,[r1,r0,lsl#1]	;lookup RGB
+;	ldr r0,[r1,r0,lsl#1]	;lookup RGB, unaligned read.
+	ldrh r0,[r1,r0]			;lookup RGB
 	adr r1,agb_pal
 	add addy,addy,addy	;lsl#1
 	strh r0,[r1,addy]	;store in agb palette
@@ -1137,8 +1145,8 @@ FPSValue
 	DCD 0
 AGBinput		;this label here for main.c to use
 	DCD 0 ;AGBjoypad (why is this in ppu.s again?  um.. i forget)
-NESinput	DCD 0 ;NESjoypad (this is what NES sees)
-	DCD 2 ;adjustblend
+EMUinput	DCD 0 ;NESjoypad (this is what NES sees)
+	DCD 0 ;adjustblend
 wtop	DCD 0,0,0,0 ;windowtop  (this label too)   L/R scrolling in unscaled mode
 ppustate
 	DCD 0 ;vramaddr
@@ -1155,6 +1163,7 @@ ppustate
 	DCB 0 ;ppuctrl0
 	DCB 0 ;ppuctrl0frame	;state of $2000 at frame start
 	DCB 0 ;ppuctrl1
+	DCB 0 ;ppuoamadr
 ;...update load/savestate if you move things around in here
 ;----------------------------------------------------------------------------
 	END

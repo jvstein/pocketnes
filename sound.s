@@ -2,7 +2,7 @@
 	INCLUDE ppu.h
 
 	EXPORT timer1interrupt
-	EXPORT sound_reset_
+	EXPORT Sound_reset
 	EXPORT updatesound
 	EXPORT make_freq_table
 	EXPORT _4000w
@@ -116,7 +116,7 @@ pcm_mix
  AREA rom_code, CODE, READONLY ;-- - - - - - - - - - - - - - - - - - - - - -
 
 ;----------------------------------------------------------------------------
-sound_reset_
+Sound_reset
 ;----------------------------------------------------------------------------
 	mov r1,#REG_BASE
 
@@ -180,18 +180,16 @@ make_freq_table
 	tst r0,#PALTIMING
 	ldreq r2,=2400				;0x10000000/111860 NTSC
 	ldrne r2,=2583				;0x10000000/103912 PAL
-	ldr r5,=FREQTBL
-	ldr r4,=2047
-frqloop
-	add r0,r4,#1
-	mul r0,r2,r0
+	ldr r12,=FREQTBL
+	mov r3,#4096
 	mov r1,#2048
-	subs r0,r1,r0,lsr#11
+frqloop
+	mul r0,r2,r3
+	subs r0,r1,r0,lsr#12
 	movmi r0,#0
-	add r3,r4,r4
-	strh r0,[r5,r3]
-	subs r4,r4,#1
-	bpl frqloop
+	subs r3,r3,#2
+	strh r0,[r12,r3]
+	bhi frqloop
 
 	bx lr
 
@@ -730,8 +728,7 @@ _4015r
 	ldrh r0,[r2,#REG_SGCNT_L]
 	ldrb r1,pcmctrl+1
 	and r1,r1,#0x90		;only read channel 5 and pcm IRQ
-	orr nes_nz,r1,r0,lsr#12
-	orr nes_nz,nes_nz,nes_nz,lsl#24
+	orr r0,r1,r0,lsr#12
 
 	mov pc,lr
 ;----------------------------------------------------------------------------

@@ -83,7 +83,8 @@ hook
 	strb r0,irqen
 	sub r0,r0,#0x10000
 	str r0,counter
-	b irq6502
+;	b irq6502
+	b CheckI
 h0
 	str r0,counter
 h1

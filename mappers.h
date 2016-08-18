@@ -51,6 +51,7 @@
 	IMPORT mapper151init
 	IMPORT mapper152init
 	IMPORT mapper180init
+	IMPORT mapper184init
 	IMPORT mapper228init
 	IMPORT mapper232init
 

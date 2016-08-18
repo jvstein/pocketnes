@@ -1,4 +1,4 @@
-	AREA wram_code3, CODE, READWRITE
+	AREA rom_code, CODE, READONLY
 
 	INCLUDE equates.h
 	INCLUDE memory.h
@@ -23,10 +23,12 @@ mapper4init
 ;----------------------------------------------------------------------------
 	DCD write0,write1,write2,write3
 
-	adr r0,MMC3_IRQ_Hook
+	ldr r0,=MMC3_IRQ_Hook
 	str r0,scanlinehook
 
 	mov pc,lr
+;----------------------------------------------------------------------------
+	AREA wram_code3, CODE, READWRITE
 ;----------------------------------------------------------------------------
 write0		;$8000-8001
 ;----------------------------------------------------------------------------
@@ -137,9 +139,8 @@ MMC3_IRQ_Hook
 
 	ldrb r1,irqen
 	cmp r1,#0
-	beq hk0
-
-	b irq6502
+;	bne irq6502
+	bne CheckI
 hk0
 	fetch 0
 	END

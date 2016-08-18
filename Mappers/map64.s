@@ -108,7 +108,8 @@ RAMBO_IRQ_Hook
 
 ;	mov r1,#0
 ;	strb r1,irqen
-	b irq6502
+;	b irq6502
+	b CheckI
 hk0
 	fetch 0
 	END

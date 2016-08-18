@@ -1,4 +1,4 @@
-	AREA wram_code3, CODE, READWRITE
+	AREA rom_code, CODE, READONLY
 
 	INCLUDE equates.h
 	INCLUDE memory.h
@@ -16,11 +16,13 @@ mapper99init
 	orr r0,r0,#VS
 	strb r0,cartflags
 
-	adr r0,write4016
+	ldr r0,=write4016
 	ldr r1,=joypad_write_ptr
 	str r0,[r1]
 
 	mov pc,lr
+;----------------------------------------------------------------------------
+	AREA wram_code3, CODE, READWRITE
 ;----------------------------------------------------------------------------
 write4016
 ;----------------------------------------------------------------------------

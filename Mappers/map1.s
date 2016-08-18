@@ -1,4 +1,4 @@
-	AREA wram_code3, CODE, READWRITE
+	AREA rom_code, CODE, READONLY
 
 	INCLUDE equates.h
 	INCLUDE memory.h
@@ -18,7 +18,7 @@ mapper1init
 ;----------------------------------------------------------------------------
 	DCD write0,write1,write2,write3
 
-	mov r0,#0x0e	;init MMC1 regs
+	mov r0,#0x0c	;init MMC1 regs
 	strb r0,reg0
 	mov r0,#0x10
 	strb r0,reg1
@@ -31,10 +31,12 @@ reset
 	strb r0,latchbit
 
 	ldrb r0,reg0
-	orr r0,r0,#0x0e
+	orr r0,r0,#0x0c
 	strb r0,reg0
 
-	b romswitch
+	b promswitch
+;----------------------------------------------------------------------------
+	AREA wram_code3, CODE, READWRITE
 ;----------------------------------------------------------------------------
 write0		;($8000-$9FFF)
 ;----------------------------------------------------------------------------
@@ -68,12 +70,12 @@ w0;----
 	tst r0,#0x01
 	bl mirror1_
 	mov lr,addy
-	b romswitch
+	b vromswitch
 w01
 	tst r0,#0x01
 	bl mirror2V_
 	mov lr,addy
-	b romswitch
+	b vromswitch
 ;----------------------------------------------------------------------------
 write1		;($A000-$BFFF)
 ;----------------------------------------------------------------------------
@@ -83,26 +85,7 @@ w1	strb r1,latch
 	strb r1,latchbit
 	strb r0,reg1
     ;----
-	ldr r1,vrommask
-	tst r1,#0x80000000
-	bne romswitch
-
-	mov addy,lr
-	ldrb r1,reg0
-	tst r1,#0x10
-	bne w11
-
-	str r0,[sp,#-4]!
-	bl chr0123_
-	ldr r0,[sp],#4
-	add r0,r0,#1
-	bl chr4567_
-	mov lr,addy
-	b romswitch
-w11
-	bl chr0123_
-	mov lr,addy
-	b romswitch
+	b vromswitch
 ;----------------------------------------------------------------------------
 write2		;($C000-$DFFF)
 ;----------------------------------------------------------------------------
@@ -112,18 +95,29 @@ w2	strb r1,latch
 	strb r1,latchbit
 	strb r0,reg2
     ;----
-	ldrb r1,reg0
-	tst r1,#0x10
-	moveq pc,lr
-
+;----------------------------------------------------------------------------
+vromswitch;
+;----------------------------------------------------------------------------
 	ldr r1,vrommask
 	tst r1,#0x80000000
-	bne romswitch
+	bne promswitch
 
+	ldrb r0,reg1
 	mov addy,lr
+	ldrb r1,reg0
+	tst r1,#0x10
+	bne w11
+
+	mov r0,r0,lsr#1
+	bl chr01234567_
+	mov lr,addy
+	b promswitch
+w11
+	bl chr0123_
+	ldrb r0,reg2
 	bl chr4567_
 	mov lr,addy
-	b romswitch
+	b promswitch
 ;----------------------------------------------------------------------------
 write3		;($E000-$FFFF)
 ;----------------------------------------------------------------------------
@@ -134,7 +128,7 @@ w3	and r0,r0,#0x0f
 	strb r1,latchbit
 	strb r0,reg3
 ;----------------------------------------------------------------------------
-romswitch;
+promswitch;
 ;----------------------------------------------------------------------------
 	ldrb r0,reg1
 	ldrb r1,reg3

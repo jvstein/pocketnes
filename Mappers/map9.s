@@ -1,4 +1,4 @@
-	AREA wram_code3, CODE, READWRITE
+	AREA rom_code, CODE, READONLY
 
 	INCLUDE equates.h
 	INCLUDE memory.h
@@ -23,7 +23,7 @@ map10start
 	bic r0,r0,#SCREEN4	;(many punchout roms have bad headers)
 	strb r0,cartflags
 
-	adr r0,hook
+	ldr r0,=hook
 	str r0,scanlinehook
 
 	mov r0,#-1
@@ -33,6 +33,9 @@ mapper10init
 ;----------------------------------------------------------------------------
 	DCD empty_W,a000_10,c000,e000
 	b map10start
+;----------------------------------------------------------------------------
+	AREA wram_code3, CODE, READWRITE
+;----------------------------------------------------------------------------
 ;------------------------------
 a000_10
 	tst addy,#0x1000

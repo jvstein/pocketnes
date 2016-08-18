@@ -92,7 +92,8 @@ hook
 
 	mov r0,#0
 	str r0,irqen	;copy latch to counter
-	b irq6502
+;	b irq6502
+	b CheckI
 h0
 	str r0,irqen
 h1

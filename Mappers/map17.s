@@ -74,7 +74,8 @@ hook
 	ldr r0,counter
 	adds r0,r0,#0x10000
 	str r0,counter
-	bcs irq6502
+;	bcs irq6502
+	bcs CheckI
 h1
 	fetch 0
 ;-------------------------------------------------------

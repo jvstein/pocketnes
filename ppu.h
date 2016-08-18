@@ -1,5 +1,5 @@
-	IMPORT ppu_init
-	IMPORT ppureset_
+	IMPORT PPU_init
+	IMPORT PPU_reset
 	IMPORT PPU_R
 	IMPORT PPU_W
 	IMPORT agb_nt_map

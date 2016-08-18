@@ -6,7 +6,7 @@ DEBUG		SETL {FALSE}
 ;BUILD		SETS "DEBUG"/"GBA"	(defined at cmdline)
 ;----------------------------------------------------------------------------
 
-NES_RAM			EQU 0x3004800	;keep $400 byte aligned for 6502 stack shit
+NES_RAM			EQU 0x3004800		;keep $400 byte aligned for 6502 stack shit
 NES_SRAM		EQU NES_RAM+0x0800	;IMPORTANT!! NES_SRAM in GBA.H points here.  keep it current if you fuck with this
 CHR_DECODE		EQU NES_SRAM+0x2000
 OAM_BUFFER1		EQU CHR_DECODE+0x400
@@ -28,12 +28,13 @@ DMA3BUFF		EQU BG0CNTBUFF-164*2
 SCROLLBUFF1		EQU DMA3BUFF-240*4
 SCROLLBUFF2		EQU SCROLLBUFF1-240*4
 DMA0BUFF		EQU SCROLLBUFF2-164*4
-END_OF_EXRAM	EQU DMA0BUFF-15400	;!How much data is left for Multiboot to work!
+END_OF_EXRAM	EQU DMA0BUFF-14200	;!How much data is left for Multiboot to work!
 
 AGB_IRQVECT		EQU 0x3007FFC
 AGB_PALETTE		EQU 0x5000000
 AGB_VRAM		EQU 0x6000000
 AGB_OAM			EQU 0x7000000
+AGB_SRAM		EQU 0xE000000
 AGB_BG			EQU AGB_VRAM+0xe000
 DEBUGSCREEN		EQU AGB_VRAM+0x3800
 
@@ -42,15 +43,26 @@ REG_DISPCNT		EQU 0x00
 REG_DISPSTAT	EQU 0x04
 REG_VCOUNT		EQU 0x06
 REG_BG0CNT		EQU 0x08
-REG_BG1CNT		EQU 0x0a
+REG_BG1CNT		EQU 0x0A
+REG_BG2CNT		EQU 0x0C
+REG_BG3CNT		EQU 0x0E
 REG_BG0HOFS		EQU 0x10
 REG_BG0VOFS		EQU 0x12
 REG_BG1HOFS		EQU 0x14
 REG_BG1VOFS		EQU 0x16
-REG_WINOUT		EQU 0x4a
-REG_BLDMOD		EQU 0x50
-REG_COLEV		EQU 0x52
-REG_COLY		EQU 0x54
+REG_BG2HOFS		EQU 0x18
+REG_BG2VOFS		EQU 0x1A
+REG_BG3HOFS		EQU 0x1C
+REG_BG3VOFS		EQU 0x1E
+REG_WIN0H		EQU 0x40
+REG_WIN1H		EQU 0x42
+REG_WIN0V		EQU 0x44
+REG_WIN1V		EQU 0x46
+REG_WININ		EQU 0x48
+REG_WINOUT		EQU 0x4A
+REG_BLDCNT		EQU 0x50
+REG_BLDALPHA	EQU 0x52
+REG_BLDY		EQU 0x54
 REG_SG1CNT_L	EQU 0x60
 REG_SG1CNT_H	EQU 0x62
 REG_SG1CNT_X	EQU 0x64
@@ -103,23 +115,23 @@ REG_SIOMLT_SEND	EQU 0x2a ;+100
 REG_RCNT		EQU 0x34 ;+100
 
 		;r0,r1,r2=temp regs
-nes_nz		RN r3 ;bit 31=N, Z=1 if bits 0-7=0
-nes_v		RN r4 ;PSR_V (everything else undefined)
-nes_a		RN r5 ;bits 0-23=0
-nes_x		RN r6 ;bits 0-23=0
-nes_y		RN r7 ;bits 0-23=0
-cycles		RN r8 ;also DIC flags
-nes_pc		RN r9
+m6502_nz	RN r3 ;bit 31=N, Z=1 if bits 0-7=0
+m6502_rmem	RN r4 ;readmem_tbl
+m6502_a		RN r5 ;bits 0-23=0, also used to clear bytes in memory
+m6502_x		RN r6 ;bits 0-23=0
+m6502_y		RN r7 ;bits 0-23=0
+cycles		RN r8 ;also VDIC flags
+m6502_pc	RN r9
 globalptr	RN r10 ;=wram_globals* ptr
-nes_optbl	RN r10
-nes_zpage	RN r11 ;=NES_RAM
+m6502_optbl	RN r10
+cpu_zpage	RN r11 ;=CPU_RAM
 addy		RN r12 ;keep this at r12 (scratch for APCS)
 		;r13=SP
 		;r14=LR
 		;r15=PC
 ;----------------------------------------------------------------------------
 
- MAP 0,nes_zpage
+ MAP 0,cpu_zpage
 nes_ram # 0x800
 nes_sram # 0x2000
 chr_decode # 0x400
@@ -137,9 +149,7 @@ readmem_tbl # 8*4
 writemem_tbl # 8*4
 memmap_tbl # 8*4
 cpuregs # 7*4
-nes_s # 4
-nes_baj # 4			;was nes_di
-nes_vaj # 4			;was nes_v
+m6502_s # 4
 lastbank # 4
 nexttimeout # 4
 scanline # 4
@@ -167,7 +177,7 @@ toggle # 1
 ppuctrl0 # 1
 ppuctrl0frame # 1
 ppuctrl1 # 1
- # 1 ;align
+ppuoamadr # 1
 			;cart.s (wram_globals2)
 mapperdata # 32
 nes_chr_map # 8
@@ -187,8 +197,9 @@ vrombase # 4
 vrommask # 4
 
 cartflags # 1
+hackflags # 1
 
- # 3 ;align
+ # 2 ;align
 ;----------------------------------------------------------------------------
 IRQ_VECTOR		EQU 0xfffe ; IRQ/BRK interrupt vector address
 RES_VECTOR		EQU 0xfffc ; RESET interrupt vector address
@@ -199,33 +210,43 @@ SRAM			EQU 0x02 ;save SRAM
 TRAINER			EQU 0x04 ;trainer present
 SCREEN4			EQU 0x08 ;4way screen layout
 VS				EQU 0x10 ;VS unisystem
+;-----------------------------------------------------------hackflags
+NoHacks			EQU 0x00
+BplHack			EQU 0x10
+BneHack			EQU 0xD0
+BeqHack			EQU 0xF0
 ;-----------------------------------------------------------emuflags
 USEPPUHACK		EQU 1	;use $2002 hack
 NOCPUHACK		EQU 2	;don't use JMP hack
 PALTIMING		EQU 4	;0=NTSC 1=PAL
+;?				EQU 8
 ;?				EQU 16
 FOLLOWMEM		EQU 32  ;0=follow sprite, 1=follow mem
+;?				EQU 64
+;?				EQU 128
 
-			;bits 8-5=scale type
+				;bits 8-15=scale type
 
 UNSCALED_NOAUTO	EQU 0	;display types
 UNSCALED_AUTO	EQU 1
 SCALED			EQU 2
 SCALED_SPRITES	EQU 3
 
-		;bits 16-31=sprite follow val
+				;bits 16-31=sprite follow val
 
 ;----------------------------------------------------------------------------
-CYCLE		EQU 16 ;one cycle (341*CYCLE cycles per scanline)
+CYC_SHIFT		EQU 8
+CYCLE			EQU 1<<CYC_SHIFT ;one cycle (341*CYCLE cycles per scanline)
 
 ;cycle flags- (stored in cycles reg for speed)
 
-CYC_C			EQU 0x01 ;Carry bit
-BRANCH			EQU 0x02 ;branch instruction encountered
-CYC_I			EQU 0x04 ;IRQ mask
-CYC_D			EQU 0x08 ;Decimal bit
-CYC_MASK		EQU 0x0F ;Mask
+CYC_C			EQU 0x01	;Carry bit
+BRANCH			EQU 0x02	;branch instruction encountered
+CYC_I			EQU 0x04	;IRQ mask
+CYC_D			EQU 0x08	;Decimal bit
+CYC_V			EQU 0x40	;Overflow bit
+CYC_MASK		EQU CYCLE-1	;Mask
 ;----------------------------------------------------------------------------
-YSTART 		EQU 13 ;scaled NES screen starts on this line
+YSTART			EQU 16 ;scaled NES screen starts on this line
 
 		END

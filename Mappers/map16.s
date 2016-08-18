@@ -1,4 +1,4 @@
-	AREA wram_code3, CODE, READWRITE
+	AREA rom_code, CODE, READONLY
 
 	INCLUDE equates.h
 	INCLUDE memory.h
@@ -20,13 +20,16 @@ mapper16init;		Bandai
 	ldrb r1,cartflags		;get cartflags
 	bic r1,r1,#SRAM			;don't use SRAM on this mapper
 	strb r1,cartflags		;set cartflags
-	adr r1,write0
+	ldr r1,mapper16init
 	str r1,writemem_tbl+12
 
-	adr r0,hook
+	ldr r0,=hook
 	str r0,scanlinehook
 
 	mov pc,lr
+;----------------------------------------------------------------------------
+	AREA wram_code3, CODE, READWRITE
+;----------------------------------------------------------------------------
 ;-------------------------------------------------------
 write0
 ;-------------------------------------------------------
@@ -62,7 +65,8 @@ hook
 	ldr r0,counter
 	subs r0,r0,#113
 	str r0,counter
-	bcc irq6502
+;	bcc irq6502
+	bcc CheckI
 h1
 	fetch 0
 ;-------------------------------------------------------

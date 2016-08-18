@@ -3,36 +3,39 @@
 #include "gba.h"
 #include "minilzo.107/minilzo.h"
 
-extern u32 g_emuflags;		//from cart.s
-extern u32 joycfg;			//from io.s
-extern u32 font;
-extern u32 fontpal;
-extern u32 *vblankfptr;		//from ppu.s
-extern u32 vbldummy;		//from ppu.s
-extern u32 vblankinterrupt;	//from ppu.s
-extern u32 AGBinput;		//from ppu.s
-extern u32 NESinput;
+extern u32 g_emuflags;			//from cart.s
+extern u32 joycfg;				//from io.s
+extern u32 font;				//from boot.s
+extern u32 fontpal;				//from boot.s
+extern u32 *vblankfptr;			//from ppu.s
+extern u32 vbldummy;			//from ppu.s
+extern u32 vblankinterrupt;		//from ppu.s
+extern u32 AGBinput;			//from ppu.s
+extern u32 EMUinput;
        u32 oldinput;
-extern u8 autostate;		//from ui.c
+extern u8 autostate;			//from ui.c
 
 extern romheader mb_header;
-const PALTIMING=4;			//Also in equates.h
+const PALTIMING=4;				//Also in equates.h
 
 //asm calls
-void loadcart(int,int);		//from cart.s
+void loadcart(int,int);			//from cart.s
 void run(int);
-void ppu_init(void);
-void resetSIO(u32);			//io.s
+void PPU_init(void);
+void resetSIO(u32);				//io.s
+void vbaprint(char *text);		//io.s
 void LZ77UnCompVram(u32 *source,u16 *destination);		//io.s
-void waitframe(void);									//io.s
+void waitframe(void);			//io.s
+int CheckGBAVersion(void);		//io.s
 
 void cls(int);
 void rommenu(void);
 int drawmenu(int);
 int getinput(void);
-int ines(u8 *p);
 void splash(void);
 void drawtext(int,char*,int);
+void setdarknessgs(int dark);
+void setbrightnessall(int light);
 void readconfig(void);		//sram.c
 void quickload(void);
 void backup_nes_sram(void);
@@ -46,18 +49,19 @@ char pogoshell_romname[32];	//keep track of rom name (for state saving, etc)
 char rtc=0;
 char pogoshell=0;
 char gameboyplayer=0;
+char gbaversion;
 
 int ne=0x454e;
 void C_entry() {
 	int i;
 	vu16 *timeregs=(u16*)0x080000c8;
 	u32 temp=(u32)(*(u8**)0x0203FBFC);
-	if((temp & 0xFE000000) == 0x08000000) pogoshell=1;
-	else pogoshell=0;
+	pogoshell=((temp & 0xFE000000) == 0x08000000)?1:0;
 	*timeregs=1;
-	if(*timeregs==1) rtc=1;
+	if(*timeregs & 1) rtc=1;
+	gbaversion=CheckGBAVersion();
 	vblankfptr=&vbldummy;
-	ppu_init();
+	PPU_init();
 
 	if(pogoshell){
 		u32 *magptr=(u32*)0x08000000;
@@ -123,13 +127,13 @@ void C_entry() {
 	if(REG_DISPCNT==FORCE_BLANK)	//is screen OFF?
 		REG_DISPCNT=0;				//screen ON
 	*MEM_PALETTE=0x7FFF;			//white background
-	REG_BLDCNT=0xff;				//(brightness decrease all)
+	REG_BLDCNT=0x00ff;				//brightness decrease all
 	for(i=0;i<17;i++) {
-		REG_COLY=i;					//fade to black
+		REG_BLDY=i;					//fade to black
 		waitframe();
 	}
 	*MEM_PALETTE=0;					//black background (avoids blue flash when doing multiboot)
-	REG_DISPCNT=0;					//screen ON
+	REG_DISPCNT=0;					//screen ON, MODE0
 	vblankfptr=&vblankinterrupt;
 	lzo_init();	//init compression lib for savestates
 
@@ -142,45 +146,38 @@ void C_entry() {
 
 //show splash screen
 void splash() {
-	u16 *src;
-	u16 *dst;
 	int i;
 
 	REG_DISPCNT=FORCE_BLANK;	//screen OFF
-	src=(u16*)textstart;	//this *SHOULD* be halfword aligned..
-	dst=MEM_VRAM;
-	for(i=0;i<(240*160);i++) {
-		*dst++=*src++;
-	}
+	memcpy((u16*)MEM_VRAM,(u16*)textstart,240*160*2);
 	waitframe();
 	REG_BG2CNT=0x0000;
-	REG_BLDCNT=0x84;	//(brightness increase)
 	REG_DISPCNT=BG2_EN|MODE3;
 	for(i=16;i>=0;i--) {	//fade from white
-		REG_COLY=i;
+		setbrightnessall(i);
 		waitframe();
 	}
 	for(i=0;i<150;i++) {	//wait 2.5 seconds
 		waitframe();
-		if (REG_P1==0x030f) gameboyplayer=1;
+		if (REG_P1==0x030f){
+			gameboyplayer=1;
+			gbaversion=3;
+		}
 	}
 }
 
 void rommenu(void) {
 	cls(3);
 	REG_BG2HOFS=0x0100;		//Screen left
-	REG_BLDCNT=0x00f3;	//darken screen
-	REG_COLY=16;
 	REG_BG2CNT=0x4600;	//16color 512x256 CHRbase0 SCRbase6 Priority0
-	REG_DISPCNT=BG2_EN|OBJ_1D; //mode0, 1d sprites, main screen turn on
+	setdarknessgs(16);
 	backup_nes_sram();
+	resetSIO((joycfg&~0xff000000) + 0x20000000);//back to 1P
 
 	if(pogoshell)
 	{
 		loadcart(0,g_emuflags&0x304);		//Also save country
 		get_saved_sram();
-		if(autostate)quickload();
-		run(1);
 	}
 	else
 	{
@@ -192,19 +189,18 @@ void rommenu(void) {
 		int sel=selectedrom;
 
 		oldinput=AGBinput=~REG_P1;
-		resetSIO((joycfg&~0xff000000) + 0x20000000);//back to 1P
     
-		i=drawmenu(sel);
-		loadcart(sel,i|(g_emuflags&0x300));  //(keep old gfxmode)
-		get_saved_sram();
-		lastselected=sel;
 		if(romz>1){
+			i=drawmenu(sel);
+			loadcart(sel,i|(g_emuflags&0x300));  //(keep old gfxmode)
+			get_saved_sram();
+			lastselected=sel;
 			for(i=0;i<8;i++)
 			{
 				waitframe();
 				REG_BG2HOFS=224-i*32;	//Move screen right
 			}
-			REG_COLY=7;			//Lighten screen
+			setdarknessgs(7);			//Lighten screen
 		}
 		do {
 			key=getinput();
@@ -222,29 +218,28 @@ void rommenu(void) {
 				sel++;
 			selectedrom=sel%=romz;
 			if(lastselected!=sel) {
-				if(romz>1)i=drawmenu(sel);
+				i=drawmenu(sel);
 				loadcart(sel,i|(g_emuflags&0x300));  //(keep old gfxmode)
 				get_saved_sram();
 				lastselected=sel;
 			}
 			run(0);
 		} while(romz>1 && !(key&(A_BTN+B_BTN+START)));
-		for(i=0;i<8;i++)
+		for(i=1;i<9;i++)
 		{
 			waitframe();
-			REG_COLY=7-i;		//Lighten screen
-			REG_BG2HOFS=i*32;	//Move screen left
+			setdarknessgs(8-i);		//Lighten screen
+			REG_BG2HOFS=i*32;		//Move screen left
 			run(0);
 		}
-		REG_BG2HOFS=0x0100;		//Screen left
 		cls(3);	//leave BG2 on for debug output
 		while(AGBinput&(A_BTN+B_BTN+START)) {
 			AGBinput=0;
 			run(0);
 		}
-		if(autostate)quickload();
-		run(1);
 	}
+	if(autostate)quickload();
+	run(1);
 }
 
 //return ptr to Nth ROM (including rominfo struct)
@@ -300,7 +295,7 @@ int getinput() {
 		repeatcount=0;
 		lastdpad=dpad;
 	}
-	NESinput=0;	//disable game input
+	EMUinput=0;	//disable game input
 	return dpad|(keyhit&(A_BTN+B_BTN+START));
 }
 
@@ -331,4 +326,16 @@ void drawtext(int row,char *str,int hilite) {
 	for(;i<31;i++)
 		here[i]=0x0120;
 }
+
+void setdarknessgs(int dark) {
+	REG_BLDCNT=0x01f1;				//darken game screen
+	REG_BLDY=dark;					//Darken screen
+	REG_BLDALPHA=(0x10-dark)<<8;	//set blending for OBJ affected BG0
+}
+
+void setbrightnessall(int light) {
+	REG_BLDCNT=0x00bf;				//brightness increase all
+	REG_BLDY=light;
+}
+
 

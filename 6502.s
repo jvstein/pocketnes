@@ -14,14 +14,15 @@
 	IMPORT quicksave	;sram.c
 	IMPORT pcmctrl
 
-	EXPORT nes_reset
+	EXPORT CPU_reset
 	EXPORT ntsc_pal_reset
 	EXPORT cpuhack_reset
 	EXPORT run
 	EXPORT op_table
 	EXPORT default_scanlinehook
 	EXPORT pcm_scanlinehook
-	EXPORT irq6502
+;	EXPORT irq6502
+	EXPORT CheckI
 	EXPORT PAL60
 	EXPORT cpustate
 	EXPORT rommap
@@ -33,15 +34,6 @@
 pcmirqbakup EQU mapperdata+24
 pcmirqcount EQU mapperdata+28
 ;----------------------------------------------------------------------------
-_xx;	???					;invalid opcode
-;----------------------------------------------------------------------------
-	[ DEBUG
-		adr r0,_xx
-		mov r1,#0
-		bl debug_
-	]
-	fetch 2
-;----------------------------------------------------------------------------
 _00;   BRK
 ;----------------------------------------------------------------------------
 	[ DEBUG
@@ -51,22 +43,14 @@ _00;   BRK
 	]
 
 	ldr r0,lastbank
-	sub r1,nes_pc,r0
+	sub r1,m6502_pc,r0
 	add r0,r1,#1
 	push16			;save PC
 
 	encodeP (B+R)		;save P
-	push8 r0
 
-	orr cycles,cycles,#CYC_I	;disable IRQ
-	bic cycles,cycles,#CYC_D	;and decimal mode
-
-	ldr r0,memmap_tbl+7*4
-	ldr r1,=IRQ_VECTOR
-	ldrb nes_pc,[r0,r1]!
-	ldrb r2,[r0,#1]
-	orr nes_pc,nes_pc,r2,lsl#8
-	encodePC		;get BRK vector
+	ldr r12,=IRQ_VECTOR
+	bl VecCont
 
 	fetch 7
 	LTORG
@@ -103,10 +87,10 @@ _09;   ORA #$nn
 ;----------------------------------------------------------------------------
 _0A;   ASL
 ;----------------------------------------------------------------------------
-	adds nes_a,nes_a,nes_a
-	mov nes_nz,nes_a,asr#24		;NZ
-	orr cycles,cycles,#CYC_C	;Prepare C
-	fetch_c 2					;also subs carry
+	adds m6502_a,m6502_a,m6502_a
+	mov m6502_nz,m6502_a,asr#24		;NZ
+	orr cycles,cycles,#CYC_C		;Prepare C
+	fetch_c 2						;also subs carry
 ;----------------------------------------------------------------------------
 _0D;   ORA $nnnn
 ;----------------------------------------------------------------------------
@@ -120,15 +104,27 @@ _0E;   ASL $nnnn
 	opASL
 	fetch_c 6
 ;----------------------------------------------------------------------------
-_10x;   BPL
+_10x;   BPL *
 ;----------------------------------------------------------------------------
 	orr cycles,cycles,#BRANCH
 _10
-	tst nes_nz,#0x80000000
-	ldrsb r0,[nes_pc],#1
-	addeq nes_pc,nes_pc,r0
+	tst m6502_nz,#0x80000000
+	ldrsb r0,[m6502_pc],#1
+	addeq m6502_pc,m6502_pc,r0
 	subeq cycles,cycles,#3*CYCLE
 	fetch 2
+;----------------------------------------------------------------------------
+_10y;   BPL *
+;----------------------------------------------------------------------------
+	orr cycles,cycles,#BRANCH
+
+	tst m6502_nz,#0x80000000
+	bne nobranch
+	ldrsb r0,[m6502_pc],#1
+	add m6502_pc,m6502_pc,r0
+	cmp r0,#-4						;speed hack for SMB3.
+	andcs cycles,cycles,#CYC_MASK	;speed hack 
+	fetch 3
 ;----------------------------------------------------------------------------
 _11;   ORA ($nn),Y
 ;----------------------------------------------------------------------------
@@ -138,13 +134,13 @@ _11;   ORA ($nn),Y
 ;----------------------------------------------------------------------------
 _15;   ORA $nn,X
 ;----------------------------------------------------------------------------
-	doZIX
+	doZIXf
 	opORA
 	fetch 4
 ;----------------------------------------------------------------------------
 _16;   ASL $nn,X
 ;----------------------------------------------------------------------------
-	doZIX
+	doZIXf
 	opASL
 	fetch_c 6
 ;----------------------------------------------------------------------------
@@ -173,11 +169,11 @@ _1E;   ASL $nnnn,X
 ;----------------------------------------------------------------------------
 _20;   JSR $nnnn
 ;----------------------------------------------------------------------------
-	ldrb r2,[nes_pc],#1
+	ldrb r2,[m6502_pc],#1
 	ldr r1,lastbank
-	sub r0,nes_pc,r1
-	ldrb r1,[nes_pc]
-	orr nes_pc,r2,r1,lsl#8
+	sub r0,m6502_pc,r1
+	ldrb r1,[m6502_pc]
+	orr m6502_pc,r2,r1,lsl#8
 	push16
 	encodePC
 	fetch 6
@@ -204,7 +200,7 @@ _26;   ROL $nn
 ;----------------------------------------------------------------------------
 	doZ
 	opROL
-	fetch_c 5
+	fetch 5
 ;----------------------------------------------------------------------------
 _28;   PLP
 ;----------------------------------------------------------------------------
@@ -220,12 +216,12 @@ _29;   AND #$nn
 ;----------------------------------------------------------------------------
 _2A;   ROL
 ;----------------------------------------------------------------------------
-	movs r1,cycles,ror#1		;get C
-	orrcs nes_a,nes_a,#0x00800000
-	adds nes_a,nes_a,nes_a
-	mov nes_nz,nes_a,asr#24		;NZ
-	orr cycles,cycles,#CYC_C	;Prepare C
-	fetch_c 2					;also subs carry
+	movs cycles,cycles,lsr#1		;get C
+	orrcs m6502_a,m6502_a,#0x00800000
+	adds m6502_a,m6502_a,m6502_a
+	mov m6502_nz,m6502_a,asr#24		;NZ
+	adc cycles,cycles,cycles		;Set C
+	fetch 2
 ;----------------------------------------------------------------------------
 _2C;   BIT $nnnn
 ;----------------------------------------------------------------------------
@@ -243,15 +239,15 @@ _2E;   ROL $nnnn
 ;----------------------------------------------------------------------------
 	doABS
 	opROL
-	fetch_c 6
+	fetch 6
 ;----------------------------------------------------------------------------
-_30x;   BMI
+_30x;   BMI *
 ;----------------------------------------------------------------------------
 	orr cycles,cycles,#BRANCH
 _30
-	tst nes_nz,#0x80000000
-	ldrsb r0,[nes_pc],#1
-	addne nes_pc,nes_pc,r0
+	tst m6502_nz,#0x80000000
+	ldrsb r0,[m6502_pc],#1
+	addne m6502_pc,m6502_pc,r0
 	subne cycles,cycles,#3*CYCLE
 	fetch 2
 ;----------------------------------------------------------------------------
@@ -263,15 +259,15 @@ _31;   AND ($nn),Y
 ;----------------------------------------------------------------------------
 _35;   AND $nn,X
 ;----------------------------------------------------------------------------
-	doZIX
+	doZIXf
 	opAND
 	fetch 4
 ;----------------------------------------------------------------------------
 _36;   ROL $nn,X
 ;----------------------------------------------------------------------------
-	doZIX
+	doZIXf
 	opROL
-	fetch_c 6
+	fetch 6
 ;----------------------------------------------------------------------------
 _38;   SEC
 ;----------------------------------------------------------------------------
@@ -294,7 +290,7 @@ _3E;   ROL $nnnn,X
 ;----------------------------------------------------------------------------
 	doAIX
 	opROL
-	fetch_c 7
+	fetch 7
 ;----------------------------------------------------------------------------
 _40;   RTI
 ;----------------------------------------------------------------------------
@@ -326,7 +322,7 @@ _46;   LSR $nn
 ;----------------------------------------------------------------------------
 _48;   PHA
 ;----------------------------------------------------------------------------
-	mov r0,nes_a,lsr#24
+	mov r0,m6502_a,lsr#24
 	push8 r0
 	fetch 3
 ;----------------------------------------------------------------------------
@@ -338,24 +334,24 @@ _49;   EOR #$nn
 ;----------------------------------------------------------------------------
 _4A;   LSR
 ;----------------------------------------------------------------------------
-	movs nes_nz,nes_a,lsr#25	;Z, N never set.
-	mov nes_a,nes_nz,lsl#24		;result without garbage
-	orr cycles,cycles,#CYC_C	;Prepare C
+	movs m6502_nz,m6502_a,lsr#25	;Z, N=0
+	mov m6502_a,m6502_nz,lsl#24		;result without garbage
+	orr cycles,cycles,#CYC_C		;Prepare C
 	fetch_c 2
 ;----------------------------------------------------------------------------
 _4C;   JMP $nnnn
 ;----------------------------------------------------------------------------
-	ldrb r0,[nes_pc],#1
-	ldrb r1,[nes_pc]
-	orr nes_pc,r0,r1,lsl#8
+	ldrb r0,[m6502_pc],#1
+	ldrb r1,[m6502_pc]
+	orr m6502_pc,r0,r1,lsl#8
 	encodePC
 	fetch 3
 ;----------------------------------------------------------------------------
 _4Cx;   JMP $nnnn
 ;----------------------------------------------------------------------------
-	ldrb r0,[nes_pc],#1
-	ldrb r1,[nes_pc]
-	orr nes_pc,r0,r1,lsl#8
+	ldrb r0,[m6502_pc],#1
+	ldrb r1,[m6502_pc]
+	orr m6502_pc,r0,r1,lsl#8
 		tst cycles,#BRANCH
 		beq checkdeadloop
 		bic cycles,cycles,#BRANCH
@@ -364,9 +360,9 @@ fini
 	fetch 3
 checkdeadloop 		;if thisjumpaddr=lastjumpaddr, cycles=0
 		ldr addy,lastjump
-		cmp addy,nes_pc
+		cmp addy,m6502_pc
 		andeq cycles,cycles,#CYC_MASK	;Save CPU bits
-		strne nes_pc,lastjump
+		strne m6502_pc,lastjump
 		b fini
 lastjump DCD 0
 ;----------------------------------------------------------------------------
@@ -382,13 +378,13 @@ _4E;   LSR $nnnn
 	opLSR
 	fetch_c 6
 ;----------------------------------------------------------------------------
-_50x;   BVC
+_50x;   BVC *
 ;----------------------------------------------------------------------------
 	orr cycles,cycles,#BRANCH
 _50
-	tst nes_v,#PSR_V
-	ldrsb r0,[nes_pc],#1
-	addeq nes_pc,nes_pc,r0
+	tst cycles,#CYC_V
+	ldrsb r0,[m6502_pc],#1
+	addeq m6502_pc,m6502_pc,r0
 	subeq cycles,cycles,#3*CYCLE
 	fetch 2
 ;----------------------------------------------------------------------------
@@ -400,13 +396,13 @@ _51;   EOR ($nn),Y
 ;----------------------------------------------------------------------------
 _55;   EOR $nn,X
 ;----------------------------------------------------------------------------
-	doZIX
+	doZIXf
 	opEOR
 	fetch 4
 ;----------------------------------------------------------------------------
 _56;   LSR $nn,X
 ;----------------------------------------------------------------------------
-	doZIX
+	doZIXf
 	opLSR
 	fetch_c 6
 ;----------------------------------------------------------------------------
@@ -438,7 +434,7 @@ _5E;   LSR $nnnn,X
 _60;   RTS
 ;----------------------------------------------------------------------------
 	pop16
-	add nes_pc,nes_pc,#1
+	add m6502_pc,m6502_pc,#1
 	encodePC
 	fetch 6
 ;----------------------------------------------------------------------------
@@ -458,12 +454,12 @@ _66;   ROR $nn
 ;----------------------------------------------------------------------------
 	doZ
 	opROR
-	fetch_c 5
+	fetch 5
 ;----------------------------------------------------------------------------
 _68;   PLA
 ;----------------------------------------------------------------------------
-	pop8 nes_nz
-	mov nes_a,nes_nz,lsl#24
+	pop8 m6502_nz
+	mov m6502_a,m6502_nz,lsl#24
 	fetch 4
 ;----------------------------------------------------------------------------
 _69;   ADC #$nn
@@ -474,12 +470,12 @@ _69;   ADC #$nn
 ;----------------------------------------------------------------------------
 _6A;   ROR
 ;----------------------------------------------------------------------------
-	movs r1,cycles,ror#1		;get C
-	mov nes_a,nes_a,rrx
-	movs nes_nz,nes_a,asr#24	;NZ
-	and nes_a,nes_a,#0xff000000
-	orr cycles,cycles,#CYC_C	;Prepare C
-	fetch_c 2
+	movs cycles,cycles,lsr#1		;get C
+	mov m6502_a,m6502_a,rrx
+	movs m6502_nz,m6502_a,asr#24	;NZ
+	and m6502_a,m6502_a,#0xff000000
+	adc cycles,cycles,cycles		;Set C
+	fetch 2
 ;----------------------------------------------------------------------------
 _6C;   JMP ($nnnn)
 ;----------------------------------------------------------------------------
@@ -487,10 +483,9 @@ _6C;   JMP ($nnnn)
 	adr r1,memmap_tbl
 	and r2,addy,#0xE000
 	ldr r1,[r1,r2,lsr#11]
-	ldrb nes_pc,[r1,addy]
-	add addy,addy,#1
-	ldrb r0,[r1,addy]
-	orr nes_pc,nes_pc,r0,lsl#8
+	ldrb m6502_pc,[r1,addy]!
+	ldrb r0,[r1,#1]
+	orr m6502_pc,m6502_pc,r0,lsl#8
 	encodePC
 	fetch 5
 ;----------------------------------------------------------------------------
@@ -504,15 +499,15 @@ _6E;   ROR $nnnn
 ;----------------------------------------------------------------------------
 	doABS
 	opROR
-	fetch_c 6
+	fetch 6
 ;----------------------------------------------------------------------------
-_70x;   BVS
+_70x;   BVS *
 ;----------------------------------------------------------------------------
 	orr cycles,cycles,#BRANCH
 _70
-	tst nes_v,#PSR_V
-	ldrsb r0,[nes_pc],#1
-	addne nes_pc,nes_pc,r0
+	tst cycles,#CYC_V
+	ldrsb r0,[m6502_pc],#1
+	addne m6502_pc,m6502_pc,r0
 	subne cycles,cycles,#3*CYCLE
 	fetch 2
 ;----------------------------------------------------------------------------
@@ -524,15 +519,15 @@ _71;   ADC ($nn),Y
 ;----------------------------------------------------------------------------
 _75;   ADC $nn,X
 ;----------------------------------------------------------------------------
-	doZIX
+	doZIXf
 	opADC
 	fetch_c 4
 ;----------------------------------------------------------------------------
 _76;   ROR $nn,X
 ;----------------------------------------------------------------------------
-	doZIX
+	doZIXf
 	opROR
-	fetch_c 6
+	fetch 6
 ;----------------------------------------------------------------------------
 _78;   SEI
 ;----------------------------------------------------------------------------
@@ -555,284 +550,284 @@ _7E;   ROR $nnnn,X
 ;----------------------------------------------------------------------------
 	doAIX
 	opROR
-	fetch_c 7
+	fetch 7
 ;----------------------------------------------------------------------------
 _81;   STA ($nn,X)
 ;----------------------------------------------------------------------------
 	doIIX
-	opSTORE nes_a
+	opSTORE m6502_a
 	fetch 6
 ;----------------------------------------------------------------------------
 _84;   STY $nn
 ;----------------------------------------------------------------------------
 	doZ
-	opSTORE nes_y
+	opSTORE m6502_y
 	fetch 3
 ;----------------------------------------------------------------------------
 _85;   STA $nn
 ;----------------------------------------------------------------------------
 	doZ
-	opSTORE nes_a
+	opSTORE m6502_a
 	fetch 3
 ;----------------------------------------------------------------------------
 _86;   STX $nn
 ;----------------------------------------------------------------------------
 	doZ
-	opSTORE nes_x
+	opSTORE m6502_x
 	fetch 3
 ;----------------------------------------------------------------------------
 _88;   DEY
 ;----------------------------------------------------------------------------
-	sub nes_y,nes_y,#0x01000000
-	mov nes_nz,nes_y,asr#24
+	sub m6502_y,m6502_y,#0x01000000
+	mov m6502_nz,m6502_y,asr#24
 	fetch 2
 ;----------------------------------------------------------------------------
 _8A;   TXA
 ;----------------------------------------------------------------------------
-	mov nes_a,nes_x
-	mov nes_nz,nes_x,asr#24
+	mov m6502_a,m6502_x
+	mov m6502_nz,m6502_x,asr#24
 	fetch 2
 ;----------------------------------------------------------------------------
 _8C;   STY $nnnn
 ;----------------------------------------------------------------------------
 	doABS
-	opSTORE nes_y
+	opSTORE m6502_y
 	fetch 4
 ;----------------------------------------------------------------------------
 _8D;   STA $nnnn
 ;----------------------------------------------------------------------------
 	doABS
-	opSTORE nes_a
+	opSTORE m6502_a
 	fetch 4
 ;----------------------------------------------------------------------------
 _8E;   STX $nnnn
 ;----------------------------------------------------------------------------
 	doABS
-	opSTORE nes_x
+	opSTORE m6502_x
 	fetch 4
 ;----------------------------------------------------------------------------
-_90x;   BCC
+_90x;   BCC *
 ;----------------------------------------------------------------------------
 	orr cycles,cycles,#BRANCH
 _90
-	tst cycles,#CYC_C		;Test Carry
-	ldrsb r0,[nes_pc],#1
-	addeq nes_pc,nes_pc,r0
+	tst cycles,#CYC_C			;Test Carry
+	ldrsb r0,[m6502_pc],#1
+	addeq m6502_pc,m6502_pc,r0
 	subeq cycles,cycles,#3*CYCLE
 	fetch 2
 ;----------------------------------------------------------------------------
 _91;   STA ($nn),Y
 ;----------------------------------------------------------------------------
 	doIIY
-	opSTORE nes_a
+	opSTORE m6502_a
 	fetch 6
 ;----------------------------------------------------------------------------
 _94;   STY $nn,X
 ;----------------------------------------------------------------------------
-	doZIX
-	opSTORE nes_y
+	doZIXf
+	opSTORE m6502_y
 	fetch 4
 ;----------------------------------------------------------------------------
 _95;   STA $nn,X
 ;----------------------------------------------------------------------------
-	doZIX
-	opSTORE nes_a
+	doZIXf
+	opSTORE m6502_a
 	fetch 4
 ;----------------------------------------------------------------------------
 _96;   STX $nn,Y
 ;----------------------------------------------------------------------------
-	doZIY
-	opSTORE nes_x
+	doZIYf
+	opSTORE m6502_x
 	fetch 4
 ;----------------------------------------------------------------------------
 _98;   TYA
 ;----------------------------------------------------------------------------
-	mov nes_a,nes_y
-	mov nes_nz,nes_y,asr#24
+	mov m6502_a,m6502_y
+	mov m6502_nz,m6502_y,asr#24
 	fetch 2
 ;----------------------------------------------------------------------------
 _99;   STA $nnnn,Y
 ;----------------------------------------------------------------------------
 	doAIY
-	opSTORE nes_a
+	opSTORE m6502_a
 	fetch 5
 ;----------------------------------------------------------------------------
 _9A;   TXS
 ;----------------------------------------------------------------------------
-	mov r0,nes_x,lsr#24
-	strb r0,nes_s	;don't make it harder than it is, use byte transfer!
+	mov r0,m6502_x,lsr#24
+	strb r0,m6502_s
 	fetch 2
 ;----------------------------------------------------------------------------
 _9D;   STA $nnnn,X
 ;----------------------------------------------------------------------------
 	doAIX
-	opSTORE nes_a
+	opSTORE m6502_a
 	fetch 5
 ;----------------------------------------------------------------------------
 _A0;   LDY #$nn
 ;----------------------------------------------------------------------------
 	doIMM
-	opLOAD nes_y
+	opLOAD m6502_y
 	fetch 2
 ;----------------------------------------------------------------------------
 _A1;   LDA ($nn,X)
 ;----------------------------------------------------------------------------
 	doIIX
-	opLOAD nes_a
+	opLOAD m6502_a
 	fetch 6
 ;----------------------------------------------------------------------------
 _A2;   LDX #$nn
 ;----------------------------------------------------------------------------
 	doIMM
-	opLOAD nes_x
+	opLOAD m6502_x
 	fetch 2
 ;----------------------------------------------------------------------------
 _A4;   LDY $nn
 ;----------------------------------------------------------------------------
 	doZ
-	opLOAD nes_y
+	opLOAD m6502_y
 	fetch 3
 ;----------------------------------------------------------------------------
 _A5;   LDA $nn
 ;----------------------------------------------------------------------------
 	doZ
-	opLOAD nes_a
+	opLOAD m6502_a
 	fetch 3
 ;----------------------------------------------------------------------------
 _A6;   LDX $nn
 ;----------------------------------------------------------------------------
 	doZ
-	opLOAD nes_x
+	opLOAD m6502_x
 	fetch 3
 ;----------------------------------------------------------------------------
 _A8;   TAY
 ;----------------------------------------------------------------------------
-	mov nes_y,nes_a
-	mov nes_nz,nes_y,asr#24
+	mov m6502_y,m6502_a
+	mov m6502_nz,m6502_y,asr#24
 	fetch 2
 ;----------------------------------------------------------------------------
 _A9;   LDA #$nn
 ;----------------------------------------------------------------------------
 	doIMM
-	opLOAD nes_a
+	opLOAD m6502_a
 	fetch 2
 ;----------------------------------------------------------------------------
 _AA;   TAX
 ;----------------------------------------------------------------------------
-	mov nes_x,nes_a
-	mov nes_nz,nes_x,asr#24
+	mov m6502_x,m6502_a
+	mov m6502_nz,m6502_x,asr#24
 	fetch 2
 ;----------------------------------------------------------------------------
 _AC;   LDY $nnnn
 ;----------------------------------------------------------------------------
 	doABS
-	opLOAD nes_y
+	opLOAD m6502_y
 	fetch 4
 ;----------------------------------------------------------------------------
 _AD;   LDA $nnnn
 ;----------------------------------------------------------------------------
 	doABS
-	opLOAD nes_a
+	opLOAD m6502_a
 	fetch 4
 ;----------------------------------------------------------------------------
 _AE;   LDX $nnnn
 ;----------------------------------------------------------------------------
 	doABS
-	opLOAD nes_x
+	opLOAD m6502_x
 	fetch 4
 ;----------------------------------------------------------------------------
-_B0x;   BCS
+_B0x;   BCS *
 ;----------------------------------------------------------------------------
 	orr cycles,cycles,#BRANCH
 _B0
-	tst cycles,#CYC_C		;Test Carry
-	ldrsb r0,[nes_pc],#1
-	addne nes_pc,nes_pc,r0
+	tst cycles,#CYC_C			;Test Carry
+	ldrsb r0,[m6502_pc],#1
+	addne m6502_pc,m6502_pc,r0
 	subne cycles,cycles,#3*CYCLE
 	fetch 2
 ;----------------------------------------------------------------------------
 _B1;   LDA ($nn),Y
 ;----------------------------------------------------------------------------
 	doIIY
-	opLOAD nes_a
+	opLOAD m6502_a
 	fetch 5
 ;----------------------------------------------------------------------------
 _B4;   LDY $nn,X
 ;----------------------------------------------------------------------------
 	doZIX
-	opLOAD nes_y
+	opLOAD m6502_y
 	fetch 4
 ;----------------------------------------------------------------------------
 _B5;   LDA $nn,X
 ;----------------------------------------------------------------------------
 	doZIX
-	opLOAD nes_a
+	opLOAD m6502_a
 	fetch 4
 ;----------------------------------------------------------------------------
 _B6;   LDX $nn,Y
 ;----------------------------------------------------------------------------
 	doZIY
-	opLOAD nes_x
+	opLOAD m6502_x
 	fetch 4
 ;----------------------------------------------------------------------------
 _B8;   CLV
 ;----------------------------------------------------------------------------
-	mov nes_v,#0
+	bic cycles,cycles,#CYC_V
 	fetch 2
 ;----------------------------------------------------------------------------
 _B9;   LDA $nnnn,Y
 ;----------------------------------------------------------------------------
 	doAIY
-	opLOAD nes_a
+	opLOAD m6502_a
 	fetch 4
 ;----------------------------------------------------------------------------
 _BA;   TSX
 ;----------------------------------------------------------------------------
-	ldrb nes_x,nes_s
-	mov nes_x,nes_x,lsl#24
-	mov nes_nz,nes_x,asr#24
+	ldrb m6502_x,m6502_s
+	mov m6502_x,m6502_x,lsl#24
+	mov m6502_nz,m6502_x,asr#24
 	fetch 2
 ;----------------------------------------------------------------------------
 _BC;   LDY $nnnn,X
 ;----------------------------------------------------------------------------
 	doAIX
-	opLOAD nes_y
+	opLOAD m6502_y
 	fetch 4
 ;----------------------------------------------------------------------------
 _BD;   LDA $nnnn,X
 ;----------------------------------------------------------------------------
 	doAIX
-	opLOAD nes_a
+	opLOAD m6502_a
 	fetch 4
 ;----------------------------------------------------------------------------
 _BE;   LDX $nnnn,Y
 ;----------------------------------------------------------------------------
 	doAIY
-	opLOAD nes_x
+	opLOAD m6502_x
 	fetch 4
 ;----------------------------------------------------------------------------
 _C0;   CPY #$nn
 ;----------------------------------------------------------------------------
 	doIMM
-	opCOMP nes_y
+	opCOMP m6502_y
 	fetch_c 2
 ;----------------------------------------------------------------------------
 _C1;   CMP ($nn,X)
 ;----------------------------------------------------------------------------
 	doIIX
-	opCOMP nes_a
+	opCOMP m6502_a
 	fetch_c 6
 ;----------------------------------------------------------------------------
 _C4;   CPY $nn
 ;----------------------------------------------------------------------------
 	doZ
-	opCOMP nes_y
+	opCOMP m6502_y
 	fetch_c 3
 ;----------------------------------------------------------------------------
 _C5;   CMP $nn
 ;----------------------------------------------------------------------------
 	doZ
-	opCOMP nes_a
+	opCOMP m6502_a
 	fetch_c 3
 ;----------------------------------------------------------------------------
 _C6;   DEC $nn
@@ -843,32 +838,32 @@ _C6;   DEC $nn
 ;----------------------------------------------------------------------------
 _C8;   INY
 ;----------------------------------------------------------------------------
-	add nes_y,nes_y,#0x01000000
-	mov nes_nz,nes_y,asr#24
+	add m6502_y,m6502_y,#0x01000000
+	mov m6502_nz,m6502_y,asr#24
 	fetch 2
 ;----------------------------------------------------------------------------
 _C9;   CMP #$nn
 ;----------------------------------------------------------------------------
 	doIMM
-	opCOMP nes_a
+	opCOMP m6502_a
 	fetch_c 2
 ;----------------------------------------------------------------------------
 _CA;   DEX
 ;----------------------------------------------------------------------------
-	sub nes_x,nes_x,#0x01000000
-	mov nes_nz,nes_x,asr#24
+	sub m6502_x,m6502_x,#0x01000000
+	mov m6502_nz,m6502_x,asr#24
 	fetch 2
 ;----------------------------------------------------------------------------
 _CC;   CPY $nnnn
 ;----------------------------------------------------------------------------
 	doABS
-	opCOMP nes_y
+	opCOMP m6502_y
 	fetch_c 4
 ;----------------------------------------------------------------------------
 _CD;   CMP $nnnn
 ;----------------------------------------------------------------------------
 	doABS
-	opCOMP nes_a
+	opCOMP m6502_a
 	fetch_c 4
 ;----------------------------------------------------------------------------
 _CE;   DEC $nnnn
@@ -877,31 +872,43 @@ _CE;   DEC $nnnn
 	opDEC
 	fetch 6
 ;----------------------------------------------------------------------------
-_D0x;   BNE
+_D0x;   BNE *
 ;----------------------------------------------------------------------------
 	orr cycles,cycles,#BRANCH
 _D0
-	tst nes_nz,#0xff
-	ldrsb r0,[nes_pc],#1
-	addne nes_pc,nes_pc,r0
+	tst m6502_nz,#0xff
+	ldrsb r0,[m6502_pc],#1
+	addne m6502_pc,m6502_pc,r0
 	subne cycles,cycles,#3*CYCLE
 	fetch 2
+;----------------------------------------------------------------------------
+_D0y;   BNE *
+;----------------------------------------------------------------------------
+	orr cycles,cycles,#BRANCH
+
+	tst m6502_nz,#0xff
+	beq nobranch
+	ldrsb r0,[m6502_pc],#1
+	add m6502_pc,m6502_pc,r0
+	cmp r0,#-4						;speed hack for Dragon Warrior?.
+	andcs cycles,cycles,#CYC_MASK	;speed hack 
+	fetch 3
 ;----------------------------------------------------------------------------
 _D1;   CMP ($nn),Y
 ;----------------------------------------------------------------------------
 	doIIY
-	opCOMP nes_a
+	opCOMP m6502_a
 	fetch_c 5
 ;----------------------------------------------------------------------------
 _D5;   CMP $nn,X
 ;----------------------------------------------------------------------------
-	doZIX
-	opCOMP nes_a
+	doZIXf
+	opCOMP m6502_a
 	fetch_c 4
 ;----------------------------------------------------------------------------
 _D6;   DEC $nn,X
 ;----------------------------------------------------------------------------
-	doZIX
+	doZIXf
 	opDEC
 	fetch 6
 ;----------------------------------------------------------------------------
@@ -913,13 +920,13 @@ _D8;   CLD
 _D9;   CMP $nnnn,Y
 ;----------------------------------------------------------------------------
 	doAIY
-	opCOMP nes_a
+	opCOMP m6502_a
 	fetch_c 4
 ;----------------------------------------------------------------------------
 _DD;   CMP $nnnn,X
 ;----------------------------------------------------------------------------
 	doAIX
-	opCOMP nes_a
+	opCOMP m6502_a
 	fetch_c 4
 ;----------------------------------------------------------------------------
 _DE;   DEC $nnnn,X
@@ -931,7 +938,7 @@ _DE;   DEC $nnnn,X
 _E0;   CPX #$nn
 ;----------------------------------------------------------------------------
 	doIMM
-	opCOMP nes_x
+	opCOMP m6502_x
 	fetch_c 2
 ;----------------------------------------------------------------------------
 _E1;   SBC ($nn,X)
@@ -943,7 +950,7 @@ _E1;   SBC ($nn,X)
 _E4;   CPX $nn
 ;----------------------------------------------------------------------------
 	doZ
-	opCOMP nes_x
+	opCOMP m6502_x
 	fetch_c 3
 ;----------------------------------------------------------------------------
 _E5;   SBC $nn
@@ -960,8 +967,8 @@ _E6;   INC $nn
 ;----------------------------------------------------------------------------
 _E8;   INX
 ;----------------------------------------------------------------------------
-	add nes_x,nes_x,#0x01000000
-	mov nes_nz,nes_x,asr#24
+	add m6502_x,m6502_x,#0x01000000
+	mov m6502_nz,m6502_x,asr#24
 	fetch 2
 ;----------------------------------------------------------------------------
 _E9;   SBC #$nn
@@ -977,7 +984,7 @@ _EA;   NOP
 _EC;   CPX $nnnn
 ;----------------------------------------------------------------------------
 	doABS
-	opCOMP nes_x
+	opCOMP m6502_x
 	fetch_c 4
 ;----------------------------------------------------------------------------
 _ED;   SBC $nnnn
@@ -992,24 +999,30 @@ _EE;   INC $nnnn
 	opINC
 	fetch 6
 ;----------------------------------------------------------------------------
-_F0x;   BEQ
+_F0x;   BEQ *
 ;----------------------------------------------------------------------------
 	orr cycles,cycles,#BRANCH
 _F0
-	tst nes_nz,#0xff
-;	bne nobranch
-	ldrsb r0,[nes_pc],#1
-	addeq nes_pc,nes_pc,r0
+	tst m6502_nz,#0xff
+	ldrsb r0,[m6502_pc],#1
+	addeq m6502_pc,m6502_pc,r0
 	subeq cycles,cycles,#3*CYCLE
 	fetch 2
+;----------------------------------------------------------------------------
+_F0y;   BEQ *
+;----------------------------------------------------------------------------
+	orr cycles,cycles,#BRANCH
 
-
-;	cmp r0,#-4						;speed hack for Ballon Fight.
-;	andcs cycles,cycles,#CYC_MASK	;speed hack 
-;	fetch 3
-;nobranch
-;	add nes_pc,nes_pc,#1
-;	fetch 2
+	tst m6502_nz,#0xff
+	bne nobranch
+	ldrsb r0,[m6502_pc],#1
+	add m6502_pc,m6502_pc,r0
+	cmp r0,#-4						;speed hack for Ballon Fight.
+	andcs cycles,cycles,#CYC_MASK	;speed hack 
+	fetch 3
+nobranch
+	add m6502_pc,m6502_pc,#1
+	fetch 2
 ;----------------------------------------------------------------------------
 _F1;   SBC ($nn),Y
 ;----------------------------------------------------------------------------
@@ -1019,13 +1032,13 @@ _F1;   SBC ($nn),Y
 ;----------------------------------------------------------------------------
 _F5;   SBC $nn,X
 ;----------------------------------------------------------------------------
-	doZIX
+	doZIXf
 	opSBC
 	fetch_c 4
 ;----------------------------------------------------------------------------
 _F6;   INC $nn,X
 ;----------------------------------------------------------------------------
-	doZIX
+	doZIXf
 	opINC
 	fetch 6
 ;----------------------------------------------------------------------------
@@ -1059,52 +1072,52 @@ run	;r0=0 to return after frame
 
 	str r0,dontstop
 	tst r0,#1
-	stmeqfd sp!,{nes_nz-nes_pc,globalptr,nes_zpage,lr}
+	stmeqfd sp!,{m6502_nz-m6502_pc,globalptr,cpu_zpage,lr}
 
 	ldr globalptr,=|wram_globals0$$Base|
-	ldr nes_zpage,=NES_RAM
+	ldr cpu_zpage,=NES_RAM
 	b line0x
 ;----------------------------------------------------------------------------
 ;cycles ran out
 ;----------------------------------------------------------------------------
 line0
 	adr r2,cpuregs
-	stmia r2,{nes_nz-nes_pc}	;save 6502 state
+	stmia r2,{m6502_nz-m6502_pc}	;save 6502 state
 waitformulti
-	ldr r1,=REG_P1		;refresh input every frame
+	ldr r1,=REG_P1				;refresh input every frame
 	ldrh r0,[r1]
 		eor r0,r0,#0xff
-		eor r0,r0,#0x300	;r0=button state (raw)
+		eor r0,r0,#0x300		;r0=button state (raw)
 	ldr r1,AGBjoypad
 	eor r1,r1,r0
-	and r1,r1,r0		;r1=button state (0->1)
+	and r1,r1,r0				;r1=button state (0->1)
 	str r0,AGBjoypad
 
 	ldrb r3,emuflags+1
 	cmp r3,#SCALED
-	bhs %F0			;if unscaled
+	bhs %F0						;if unscaled
 	ldr r3,windowtop
-	tst r0,#0x100			;R=scroll down
+	tst r0,#0x100				;R=scroll down
 	addne r3,r3,#2
 	cmp r3,#79
 	movhi r3,#79
-	tst r0,#0x200			;L=scroll up
+	tst r0,#0x200				;L=scroll up
 	subnes r3,r3,#2
 	movmi r3,#0
 	str r3,windowtop
 0
 	ldr r2,dontstop
 	cmp r2,#0
-	ldmeqfd sp!,{nes_nz-nes_pc,globalptr,nes_zpage,lr}	;exit here if doing single frame:
-	bxeq lr							;return to rommenu()
+	ldmeqfd sp!,{m6502_nz-m6502_pc,globalptr,cpu_zpage,lr}	;exit here if doing single frame:
+	bxeq lr						;return to rommenu()
 
 	;----anything from here til line0x won't get executed while rom menu is active---
 
 	mov r2,#REG_BASE
 	mov r3,#0x0110
-	strh r3,[r2,#REG_BLDMOD]	;stop darkened screen,OBJ blend to BG0
+	strh r3,[r2,#REG_BLDCNT]	;stop darkened screen,OBJ blend to BG0
 	mov r3,#0x1000				;BG0=16, OBJ=0
-	strh r3,[r2,#REG_COLEV]		;Alpha values
+	strh r3,[r2,#REG_BLDALPHA]	;Alpha values
 
 	adr lr,line0x				;return here after doing L/R + SEL/START
 
@@ -1116,7 +1129,7 @@ waitformulti
 
 	ands r3,r0,#0x300			;if either L or R is pressed (not both)
 	eornes r3,r3,#0x300
-	bicne r0,r0,#0x0c			;	hide sel,start from NES
+	bicne r0,r0,#0x0c			;hide sel,start from EMU
 	str r0,NESjoypad
 	beq line0x					;skip ahead if neither or both are pressed
 
@@ -1144,26 +1157,26 @@ waitformulti
 	ldrne r1,=quicksave
 	bxne r1
 line0x
-	bl refreshNESjoypads	;Z=1 if communication ok
-	bne waitformulti		;waiting on other GBA..
+	bl refreshNESjoypads		;Z=1 if communication ok
+	bne waitformulti			;waiting on other GBA..
 
 	ldr r0,AGBjoypad
-	ldr r2,fiveminutes		;sleep after 5/10/30 minutes of inactivity
-	cmp r0,#0				;(left out of the loop so waiting on multi-link
-	ldrne r2,sleeptime		;doesn't accelerate time)
+	ldr r2,fiveminutes			;sleep after 5/10/30 minutes of inactivity
+	cmp r0,#0					;(left out of the loop so waiting on multi-link
+	ldrne r2,sleeptime			;doesn't accelerate time)
 	subs r2,r2,#1
 	str r2,fiveminutes
 	bleq suspend
 
 	mov r1,#0
-	strb r1,ppustat			;vbl clear, sprite0 clear
-	str r1,scanline			;reset scanline count
+	strb r1,ppustat				;vbl clear, sprite0 clear
+	str r1,scanline				;reset scanline count
 
-	bl newframe				;display update
+	bl newframe					;display update
 	bl updatesound
 
 ;-----------------------------------
-;	ldr r0,=0x04000006	;to write out the scanline
+;	ldr r0,=0x04000006			;to write out the scanline
 ;	ldrh r0,[r0]
 ;	mov r1,#19
 ;	bl debug_
@@ -1172,16 +1185,16 @@ line0x
 
  [ BUILD <> "DEBUG"
 	ldrb r4,novblankwait
-	teq r4,#1				;NoVSync?
+	teq r4,#1					;NoVSync?
 	beq l03
 l01
-	mov r0,#0				;don't wait if not necessary
-	mov r1,#1				;VBL wait
-	swi 0x040000			; Turn of CPU until IRQ if not too late allready.
-	ldrb r0,PAL60			;wait for AGB VBL
+	mov r0,#0					;don't wait if not necessary
+	mov r1,#1					;VBL wait
+	swi 0x040000				; Turn of CPU until VBLIRQ if not too late allready.
+	ldrb r0,PAL60				;wait for AGB VBL
 	cmp r0,#5
 	beq l01
-	teq r4,#2				;Check for slomo
+	teq r4,#2					;Slomo?
 	moveq r4,#0
 	beq l01
 l03
@@ -1191,12 +1204,12 @@ l03
 	str r0,fpsvalue
 
 	adr r0,cpuregs
-	ldmia r0,{nes_nz-nes_pc}	;restore 6502 state
+	ldmia r0,{m6502_nz-m6502_pc}	;restore 6502 state
 
 	ldr r0,cyclesperscanline
 	ldr r1,frame
 	tst r1,#1
-	subeq r0,r0,#CYCLE		;Every other frame has 1/3 less CPU cycle.
+	subeq r0,r0,#CYCLE			;Every other frame has 1/3 less CPU cycle.
 	add cycles,cycles,r0
 	adr r0,line1_to_119
 	str r0,nexttimeout
@@ -1212,8 +1225,8 @@ line1_to_119 ;------------------------
 	cmp r1,#119
 	ldrne pc,scanlinehook
 ;--------------------------------------------- between 119 and 120
-	ldr r0,nes_chr_map		;For sprites
-	str r0,old_chr_map		;TMNT 2 likes this
+	ldr r0,nes_chr_map			;For sprites
+	str r0,old_chr_map			;TMNT 2 likes this
 	ldr r0,nes_chr_map+4
 	str r0,old_chr_map+4
 
@@ -1255,7 +1268,7 @@ line242NMI ;---------------------------
  [ DEBUG
 	mov r1,#REG_BASE			;darken screen during NES vblank
 	mov r0,#0x00f1
-	strh r0,[r1,#REG_BLDMOD]
+	strh r0,[r1,#REG_BLDCNT]
 	ldrh r0,[r1,#REG_VCOUNT]
 	mov r1,#19
 	bl debug_
@@ -1264,22 +1277,8 @@ line242NMI ;---------------------------
 	tst r0,#0x80
 	beq %F0			;NMI?
 
-	ldr r1,lastbank
-	sub r0,nes_pc,r1
-	push16					;save PC
-
-	encodeP (R)				;save P
-	push8 r0
-
-	orr cycles,cycles,#CYC_I	;disable IRQ
-	bic cycles,cycles,#CYC_D	;and decimal mode
-
-	ldr r0,memmap_tbl+7*4	;JMP [NMI]
-	ldr r1,=NMI_VECTOR
-	ldrb nes_pc,[r0,r1]!
-	ldrb r2,[r0,#1]
-	orr nes_pc,nes_pc,r2,lsl#8
-	encodePC
+	ldr r12,=NMI_VECTOR
+	bl Vec6502
 	sub cycles,cycles,#3*7*CYCLE
 0
 	ldr r0,cyclesperscanline
@@ -1327,34 +1326,44 @@ pcm_scanlinehook
 	orrne r2,r2,#0x8000		;set pcm IRQ bit in R4015
 	bic r2,r2,#0x1000		;clear channel 5
 	str r2,[addy]
-	bne irq6502
+	bne CheckI
 hk0
 default_scanlinehook
 	fetch 0
+
+
 ;----------------------------------------------------------
-irq6502
+CheckI								;Check Interrupt Disable
 ;----------------------------------------------------------
 	tst cycles,#CYC_I
 	bne default_scanlinehook		;we dont want no stinkin irqs
-
+;----------------------------------------------------------
+irq6502
+;----------------------------------------------------------
+	ldr r12,=IRQ_VECTOR
+	bl Vec6502
+	fetch 7
+;----------------------------------------------------------
+Vec6502
+;----------------------------------------------------------
 	ldr r0,lastbank
-	sub r0,nes_pc,r0
+	sub r0,m6502_pc,r0
 	push16					;save PC
 
 	encodeP (R)				;save P
+VecCont
 	push8 r0
 
 	orr cycles,cycles,#CYC_I	;disable IRQ
-	bic cycles,cycles,#CYC_D	;and decimal mode
+;	bic cycles,cycles,#CYC_D	;and decimal mode
 
 	ldr r0,memmap_tbl+7*4
-	ldr r1,=IRQ_VECTOR
-	ldrb nes_pc,[r0,r1]!
+	ldrb m6502_pc,[r0,r12]!
 	ldrb r2,[r0,#1]
-	orr nes_pc,nes_pc,r2,lsl#8
+	orr m6502_pc,m6502_pc,r2,lsl#8
 	encodePC				;get IRQ vector
 
-	fetch 7
+	bx lr
 ;----------------------------------------------------------------------------
 fiveminutes DCD 5*60*60
 sleeptime DCD 5*60*60
@@ -1363,6 +1372,15 @@ novblankwait DCB 0
 PAL60 DCB 0
 ;----------------------------------------------------------------------------
 	AREA rom_code, CODE, READONLY
+;----------------------------------------------------------------------------
+_xx;	???					;invalid opcode
+;----------------------------------------------------------------------------
+	[ DEBUG
+		adr r0,_xx
+		mov r1,#0
+		bl debug_
+	]
+	fetch 2
 ;----------------------------------------------------------------------------
 
 ntsc_pal_reset
@@ -1392,17 +1410,55 @@ nr0	ldr r0,[r1,r3,lsl#2]
 	str r0,[r12]
 	subs r3,r3,#1
 	bpl nr0
+
+	ldrb r0,hackflags
+	cmp r0,#NoHacks		;branch hacks?
+	bxeq lr				;No, exit.
+
+	mov r3,r0,lsr#5		;which opcode?
+	adr r1,branchops
+	ldr r12,[r2,r3,lsl#2]
+	ldr r2,[r1,r3,lsl#2]
+	str r2,[r12]
+
+	and r3,r0,#0xF		;how long branches?
+	adr r1,Hacklist1
+	ldr r3,[r1,r3,lsl#2]
+	str r3,[r2,#5*4]
+
 	bx lr
 
+Hacklist1
+	cmp r0,#-16
+	cmp r0,#-17
+	cmp r0,#-18
+	cmp r0,#-3
+	cmp r0,#-4
+	cmp r0,#-5
+	cmp r0,#-6
+	cmp r0,#-7
+	cmp r0,#-8
+	cmp r0,#-9
+	cmp r0,#-10
+	cmp r0,#-11
+	cmp r0,#-12
+	cmp r0,#-13
+	cmp r0,#-14
+	cmp r0,#-15
+branchops
+	DCD _10y,_30x,_50x,_70x,_90x,_B0x,_D0y,_F0y,_4Cx
+normalops
+	DCD _10,_30,_50,_70,_90,_B0,_D0,_F0,_4C
+jmpops
+	DCD _10x,_30x,_50x,_70x,_90x,_B0x,_D0x,_F0x,_4Cx
+opindex
+	DCD op_table+0x10*4,op_table+0x30*4,op_table+0x50*4,op_table+0x70*4,op_table+0x90*4
+	DCD op_table+0xB0*4,op_table+0xD0*4,op_table+0xF0*4,op_table+0x4C*4
 ;----------------------------------------------------------------------------
-nes_reset	;called by loadcart (r0-r9 are free to use)
+CPU_reset	;called by loadcart (r0-r9 are free to use)
 ;----------------------------------------------------------------------------
 	str lr,[sp,#-4]!
-;	mov addy,lr
 
-	bl IO_reset_
-	bl sound_reset_
-	bl ppureset_
 ;---SRAM setup
 	ldrb r0,cartflags
 	tst r0,#SRAM			;use sram?
@@ -1414,37 +1470,25 @@ nes_reset	;called by loadcart (r0-r9 are free to use)
 ;---cpu reset
 	bl cpuhack_reset
 
-	mov nes_a,#0
-	mov nes_x,#0
-	mov nes_y,#0
-	mov nes_nz,#0
-	mov nes_v,#0
-	ldr r0,=NES_RAM+0x1ff
-	str r0,nes_s		;S=FF
-	mov cycles,#CYC_I		;D=0, C=0, I=1 disable IRQ.
+	mov m6502_a,#0
+	mov m6502_x,#0
+	mov m6502_y,#0
+	mov m6502_nz,#0
+	adr m6502_rmem,readmem_tbl
+	ldr r0,=NES_RAM+0x100
+	str r0,m6502_s		;S=0xFD (0x100-3)
+	mov cycles,#0		;D=0, C=0, V=0, I=1 disable IRQ.
 
-	str nes_a,frame		;frame count reset
+	str m6502_a,frame		;frame count reset
 
 	;(clear irq/nmi/res source)...
 
-	ldr r0,memmap_tbl+7*4
-	ldr r1,=RES_VECTOR
-	ldrb nes_pc,[r0,r1]!
-	ldrb r2,[r0,#1]
-	orr nes_pc,nes_pc,r2,lsl#8
-	encodePC		;get RESET vector
+	ldr r12,=RES_VECTOR
+	bl Vec6502
 
 	adr r0,cpuregs
-	stmia r0,{nes_nz-nes_pc}
+	stmia r0,{m6502_nz-m6502_pc}
 	ldr pc,[sp],#4
-;	mov pc,addy
-normalops
-	DCD _10,_30,_50,_70,_90,_B0,_D0,_F0,_4C
-jmpops
-	DCD _10x,_30x,_50x,_70x,_90x,_B0x,_D0x,_F0x,_4Cx
-opindex
-	DCD op_table+0x10*4,op_table+0x30*4,op_table+0x50*4,op_table+0x70*4,op_table+0x90*4
-	DCD op_table+0xB0*4,op_table+0xD0*4,op_table+0xF0*4,op_table+0x4C*4
 ;----------------------------------------------------------
 	AREA wram_globals0, CODE, READWRITE
 
@@ -1493,9 +1537,7 @@ rommap	% 4*4			;$8000-FFFF
 cpustate
 	;group these together for save/loadstate
 	% 7*4 ;cpuregs (nz,c,a,x,y,cycles,pc)
-	DCD 0 ;nes_s:
-	DCD 0 ;nes_baj:   (ONLY d,i bits are set)
-	DCD 0 ;nes_vaj:    PSR_V (everything else undefined)
+	DCD 0 ;m6502_s:
 	DCD 0 ;lastbank: last memmap added to PC (used to calculate current PC)
 
 	DCD 0 ;nexttimeout:  jump here when cycles runs out

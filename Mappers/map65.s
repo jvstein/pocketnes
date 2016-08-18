@@ -90,7 +90,8 @@ hook
 	mov r0,#0
 	strb r0,irqen
 	str r0,counter	;clear counter and IRQenable.
-	b irq6502
+;	b irq6502
+	b CheckI
 h0
 	str r0,counter
 h1

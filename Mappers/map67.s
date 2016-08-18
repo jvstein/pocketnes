@@ -77,7 +77,8 @@ map67_IRQ_Hook
 	strb r1,irqen
 	mov r0,r0,lsr#16
 	str r0,countdown
-	b irq6502
+;	b irq6502
+	b CheckI
 hk0
 	fetch 0
 ;----------------------------------------------------------------------------

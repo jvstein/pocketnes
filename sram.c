@@ -12,19 +12,20 @@ extern u8 Image$$RO$$Limit;
 extern u8 g_cartflags;	//(from iNES header)
 extern char g_scaling;	//(cart.s) current display mode
 extern char flicker;	//from ppu.s
+extern u8 gammavalue;	//(ppu.s) current gammavalue
 extern u8 stime;		//from ui.c
 extern u8 autostate;	//from ui.c
 extern u8 *textstart;	//from main.c
-extern u32 gammavalue;	//(ppu.s) current gammavalue
 
 extern char pogoshell;	//main.c
 
-int totalstatesize;	//how much SRAM is used
+int totalstatesize;		//how much SRAM is used
 
 //-------------------
 u8 *findrom(int);
 void cls(int);		//main.c
 void drawtext(int,char*,int);
+void setdarknessgs(int dark);
 void scrolll(int f);
 void scrollr(void);
 void waitframe(void);
@@ -434,8 +435,7 @@ void quicksave() {
 	if(!using_flashcart())
 		return;
 
-	REG_BLDCNT=0x00f3;	//darken
-	REG_COLY=7;
+	setdarknessgs(7);	//darken
 	drawtext(32+9,"           Saving.",0);
 
 	i=savestate(BUFFER2);
@@ -592,7 +592,7 @@ void writeconfig() {
 	j =(g_scaling & 0xF);						//store current display type
 	j |= (gammavalue & 0x7)<<5;					//store current gamma value
 	cfg->displaytype = j;
-	j = stime & 0xf;							//store current autosleep time
+	j = stime & 0x3;							//store current autosleep time
 	j |= (autostate & 0x1)<<5;					//store current autostate setting
 	j |= ((flicker & 0x1)^1)<<4;				//store current flicker setting
 	cfg->misc = j;
@@ -618,7 +618,7 @@ void readconfig() {
 		g_scaling = (i & 0xF);
 		gammavalue = (i & 0xE0)>>5;				//restore gamma value
 		i = cfg->misc;
-		stime = i & 0xf;						//restore autosleep time
+		stime = i & 0x3;						//restore autosleep time
 		autostate = (i & 0x20)>>5;				//restore autostate setting
 		flicker = ((i & 0x10)^0x10)>>4;			//restore flicker setting
 	}

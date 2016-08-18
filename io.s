@@ -5,7 +5,7 @@
 	INCLUDE cart.h
 	INCLUDE 6502.h
 
-	EXPORT IO_reset_
+	EXPORT IO_reset
 	EXPORT IO_R
 	EXPORT IO_W
 	EXPORT joypad_write_ptr
@@ -18,9 +18,12 @@
 	EXPORT resetSIO
 	EXPORT thumbcall_r1
 	EXPORT gettime
-	EXPORT gbpadress
-	EXPORT LZ77UnCompVram
+	EXPORT vbaprint
 	EXPORT waitframe
+	EXPORT LZ77UnCompVram
+	EXPORT CheckGBAVersion
+	EXPORT gbpadress
+
 
  AREA rom_code, CODE, READONLY ;-- - - - - - - - - - - - - - - - - - - - - -
 
@@ -36,15 +39,33 @@ VblWait
 	mov r1,#1				;VBL wait
 	swi 0x040000			; Turn of CPU until VBLIRQ if not too late allready.
 	bx lr
+CheckGBAVersion
+	ldr r0,=0x5AB07A6E		;Fool proofing
+	mov r12,#0
+	swi 0x0D0000			;GetBIOSChecksum
+	ldr r1,=0xABBE687E		;Proto GBA
+	cmp r0,r1
+	moveq r12,#1
+	ldr r1,=0xBAAE187F		;Normal GBA
+	cmp r0,r1
+	moveq r12,#2
+	ldr r1,=0xBAAE1880		;Nintendo DS
+	cmp r0,r1
+	moveq r12,#4
+	mov r0,r12
+	bx lr
+
 scaleparms;	   NH     FH     NV     FV
 	DCD 0x0000,0x0100,0xff00,0x0150,0xfeb6,OAM_BUFFER1+6,AGB_OAM+518
 ;----------------------------------------------------------------------------
-IO_reset_
+IO_reset
 ;----------------------------------------------------------------------------
 	adr r6,scaleparms		;set sprite scaling params
 	ldmia r6,{r0-r6}
 
-	strh r1,[r5],#8				;buffer1
+	mov r7,#3
+scaleloop
+	strh r1,[r5],#8				;buffer1, buffer2, buffer3
 	strh r0,[r5],#8
 	strh r0,[r5],#8
 	strh r3,[r5],#232
@@ -52,22 +73,8 @@ IO_reset_
 		strh r0,[r5],#8
 		strh r0,[r5],#8
 		strh r3,[r5],#232
-	strh r1,[r5],#8				;buffer2
-	strh r0,[r5],#8
-	strh r0,[r5],#8
-	strh r3,[r5],#232
-		strh r2,[r5],#8
-		strh r0,[r5],#8
-		strh r0,[r5],#8
-		strh r3,[r5],#232
-	strh r1,[r5],#8				;buffer3
-	strh r0,[r5],#8
-	strh r0,[r5],#8
-	strh r3,[r5],#232
-		strh r2,[r5],#8
-		strh r0,[r5],#8
-		strh r0,[r5],#8
-		strh r3,[r5],#232
+	subs r7,r7,#1
+	bne scaleloop
 
 	strh r1,[r6],#8				;7000200
 	strh r0,[r6],#8
@@ -96,9 +103,9 @@ si3	strb r0,[r3],#1
 	bne si3
 	bx lr
 si1
-	ldr r0,=0x00c00000		;0.75
-	ldr r1,=0xf5000000		;-14*0.75
-	ldrhi r1,=0xf1000000		;-14*0.75 was 0xf5000000
+	mov   r0,#0x00c00000		;0.75
+	mov   r1,#0xf3000000		;-16*0.75
+	movhi r1,#0xef000000		;-16*0.75 was 0xf5000000
 si4	mov r2,r1,lsr#24
 	strb r2,[r3],#1
 	add r1,r1,r0
@@ -106,9 +113,37 @@ si4	mov r2,r1,lsr#24
 	bne si4
 	bx lr
 ;----------------------------------------------------------------------------
+resetSIO	;r0=joycfg
+;----------------------------------------------------------------------------
+	bic r0,r0,#0x0f000000
+	ldr r3,=joycfg
+	str r0,[r3]
+
+	mov r2,#2		;only 2 players.
+	mov r1,r0,lsr#29
+	cmp r1,#0x6
+	moveq r2,#4		;all 4 players
+	cmp r1,#0x5
+	moveq r2,#3		;3 players.
+	ldr r3,=nrplayers
+	str r2,[r3]
+
+	mov r2,#REG_BASE
+	add r2,r2,#0x100
+
+	mov r1,#0
+	strh r1,[r2,#REG_RCNT]
+
+	tst r0,#0x80000000
+	moveq r1,#0x2000
+	movne r1,   #0x6000
+	addne r1,r1,#0x0002	;16bit multiplayer, 57600bps
+	strh r1,[r2,#REG_SIOCNT]
+
+	bx lr
+;----------------------------------------------------------------------------
 suspend	;called from ui.c and 6502.s
 ;-------------------------------------------------
-	stmfd sp!,{r0,r1,lr}
 	mov r3,#REG_BASE
 
 	ldr r1,=REG_P1CNT
@@ -130,7 +165,6 @@ suspend	;called from ui.c and 6502.s
 
 	strh r1,[r3,#REG_SGCNT_L]	;sound on
 
-	ldmfd sp!,{r0,r1,lr}
 	bx lr
 ;----------------------------------------------------------------------------
 gettime	;called from ui.c
@@ -281,7 +315,7 @@ PRIORITY EQU 0x800	;0x800=AGB OBJ priority 2/3
 	mov r3,r1,lsr#16		;r3=follow value
 	tst r1,#FOLLOWMEM
 	ldreqb r0,[addy,r3,lsl#2]			;follow sprite
-	ldrneb r0,[nes_zpage,r3]			;follow memory
+	ldrneb r0,[cpu_zpage,r3]			;follow memory
 	cmp r0,#239
 	bhi dm0
 	add r0,r0,r0,lsl#2
@@ -295,6 +329,7 @@ dm0
 	ldrb r0,ppuctrl0frame	;8x16?
 	tst r0,#0x20
 	bne dm4
+;- - - - - - - - - - - - - 8x8 size
 							;get sprite0 hit pos:
 	tst r0,#0x08			;CHR base? (0000/1000)
 	moveq r4,#0+PRIORITY	;r4=CHR set+AGB priority
@@ -355,10 +390,9 @@ dm11
 	str r0,[r2],#4			;store OBJ Atr 0,1
 
 	and r1,r3,#0x0000ff00	;tile#
-	mov r0,r1,lsr#8
-	and r1,r3,#0x00030000	;color
-	orr r0,r0,r1,lsr#4
-	orr r0,r0,r4			;tileset+priority
+	and r0,r3,#0x00030000	;color
+	orr r0,r1,r0,lsl#4
+	orr r0,r4,r0,lsr#8		;tileset+priority
 	strh r0,[r2],#4			;store OBJ Atr 2
 dm9
 	tst addy,#0xff
@@ -369,7 +403,7 @@ dm10
 	str r0,[r2],#8
 	b dm9
 
-dm4	;- - - - - - - - - - - - -8x16
+dm4	;- - - - - - - - - - - - - 8x16 size
 				;check sprite hit:
 	ldrb r0,[addy,#1]		;sprite tile#
 	movs r0,r0,lsr#1
@@ -616,33 +650,6 @@ endSIO
 	teq r4,#0
 	mov pc,lr
 ;----------------------------------------------------------------------------
-resetSIO	;r0=joycfg
-;----------------------------------------------------------------------------
-	bic r0,r0,#0x0f000000
-	str r0,joycfg
-
-	mov r2,#2		;only 2 players.
-	mov r1,r0,lsr#29
-	cmp r1,#0x6
-	moveq r2,#4		;all 4 players
-	cmp r1,#0x5
-	moveq r2,#3		;3 players.
-	str r2,nrplayers
-
-	mov r2,#REG_BASE
-	add r2,r2,#0x100
-
-	mov r1,#0
-	strh r1,[r2,#REG_RCNT]
-
-	tst r0,#0x80000000
-	moveq r1,#0x2000
-	movne r1,   #0x6000
-	addne r1,r1,#0x0002	;16bit multiplayer, 57600bps
-	strh r1,[r2,#REG_SIOCNT]
-
-	bx lr
-;----------------------------------------------------------------------------
 refreshNESjoypads	;call every frame
 ;exits with Z flag clear if update incomplete (waiting for other player)
 ;is my multiplayer code butt-ugly?  yes, I thought so.
@@ -824,17 +831,17 @@ joy0_R		;4016
 ;----------------------------------------------------------------------------
 	ldr r0,joy0serial
 	mov r1,r0,asr#1
-	and nes_nz,r0,#1
+	and r0,r0,#1
 	str r1,joy0serial
 
 	ldrb r1,cartflags
 	tst r1,#VS
-	orreq nes_nz,nes_nz,#0x40
+	orreq r0,r0,#0x40
 	moveq pc,lr
 
 	ldrb r1,joy0state
 	tst r1,#8		;start=coin (VS)
-	orrne nes_nz,nes_nz,#0x40
+	orrne r0,r0,#0x40
 
 	mov pc,lr
 ;----------------------------------------------------------------------------
@@ -842,12 +849,12 @@ joy1_R		;4017
 ;----------------------------------------------------------------------------
 	ldr r0,joy1serial
 	mov r1,r0,asr#1
-	and nes_nz,r0,#1
+	and r0,r0,#1
 	str r1,joy1serial
 
 	ldrb r1,cartflags
 	tst r1,#VS
-	orrne nes_nz,nes_nz,#0xf8	;VS dip switches
+	orrne r0,r0,#0xf8	;VS dip switches
 	mov pc,lr
 ;----------------------------
 	END

@@ -114,7 +114,8 @@ hook
 	mov r0,#0
 	str r0,counter	;clear counter and IRQenable.
 	strb r0,irqen
-	b irq6502
+;	b irq6502
+	b CheckI
 h0
 	str r0,counter
 h1

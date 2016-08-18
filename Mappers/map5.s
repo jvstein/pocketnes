@@ -344,7 +344,6 @@ MMC5IRQR
 	cmp r1,#0
 	andne r1,r0,#0x40
 	strb r1,mmc5irqr
-	orr nes_nz,r0,r0,lsl#24
 	mov pc,lr
 
 MMC5MulA
@@ -352,21 +351,19 @@ MMC5MulA
 	ldrb r2,mmc5mul1
 	mul r0,r1,r2
 	and r0,r0,#0xff
-	orr nes_nz,r0,r0,lsl#24
 	mov pc,lr
 MMC5MulB
 	ldrb r1,mmc5mul1
 	ldrb r2,mmc5mul1
 	mul r0,r1,r2
 	mov r0,r0,lsr#8
-	orr nes_nz,r0,r0,lsl#24
 	mov pc,lr
 
 ;-------------------------------------------------------
 hook
 ;------------------------------------------------------
 	ldrb r0,counter
-	ldrb r1,scanline
+	ldr r1,scanline
 	ldrb r2,mmc5irqr
 	cmp r1,#239
 	blt h2
@@ -383,7 +380,8 @@ h2
 
 	ldrb r0,enable
 	cmp r0,#0
-	bne irq6502
+;	bne irq6502
+	bne CheckI
 h1
 	strb r2,mmc5irqr
 	fetch 0

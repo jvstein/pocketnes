@@ -8,7 +8,8 @@
 void cls(int);		//from main.c
 void rommenu(void);
 void drawtext(int,char*,int);
-void waitframe(void);
+void setdarknessgs(int dark);
+void setbrightnessall(int light);
 extern char *textstart;
 
 int SendMBImageToClient(void);	//mbclient.c
@@ -17,6 +18,7 @@ int SendMBImageToClient(void);	//mbclient.c
 void resetSIO(u32);			//io.s
 void doReset(void);			//io.s
 void suspend(void);			//io.s
+void waitframe(void);		//io.s
 int gettime(void);			//io.s
 void spriteinit(char);		//io.s
 void debug_(int,int);		//ppu.s
@@ -31,7 +33,7 @@ extern char novblankwait;	//from 6502.s
 extern u32 sleeptime;		//from 6502.s
 extern u32 FPSValue;		//from ppu.s
 extern char fpsenabled;		//from ppu.s
-extern u32 gammavalue;		//from ppu.s
+extern char gammavalue;		//from ppu.s
 extern char twitch;			//from ppu.s
 extern char flicker;		//from ppu.s
 extern u32 wtop;			//from ppu.s
@@ -39,9 +41,11 @@ extern u32 wtop;			//from ppu.s
 extern char rtc;
 extern char pogoshell;
 extern char gameboyplayer;
+extern char gbaversion;
 
-int autoA,autoB;	//0=off, 1=on, 2=R
+u8 autoA,autoB;				//0=off, 1=on, 2=R
 u8 stime=0;
+u8 ewram=0;
 u8 autostate=0;
 
 void autoAset(void);
@@ -66,6 +70,7 @@ void sleepset(void);
 void fpsset(void);
 void brightset(void);
 void fadetowhite(void);
+void ewramset(void);
 void loadstatemenu(void);
 void savestatemenu(void);
 void autostateset(void);
@@ -73,16 +78,16 @@ void display(void);
 void flickset(void);
 void bajs(void);
 
-void managesram(void);	//sram.c
 void writeconfig(void);	//sram.c
+void managesram(void);	//sram.c
 
-#define MENU2ITEMS 5		//othermenu items
+#define MENU2ITEMS 6		//othermenu items
 #define MENU3ITEMS 3		//displaymenu items
 #define CARTMENUITEMS 12 //mainmenuitems when running from cart (not multiboot)
 #define MULTIBOOTMENUITEMS 8 //"" when running from multiboot
 const fptr multifnlist[]={autoBset,autoAset,controller,ui3,ui2,multiboot,sleep,restart};
-const fptr fnlist1[]={autoBset,autoAset,controller,ui3,ui2,multiboot,managesram,savestatemenu,loadstatemenu,sleep,restart,exit};
-const fptr fnlist2[]={vblset,fpsset,swapAB,sleepset,autostateset,bajs};
+const fptr fnlist1[]={autoBset,autoAset,controller,ui3,ui2,multiboot,savestatemenu,loadstatemenu,managesram,sleep,restart,exit};
+const fptr fnlist2[]={vblset,fpsset,sleepset,ewramset,swapAB,autostateset,bajs};
 const fptr fnlist3[]={display,flickset,brightset};
 
 int selected;//selected menuitem.  used by all menus.
@@ -118,6 +123,7 @@ u32 getmenuinput(int menuitems) {
 
 void ui() {
 	int key,soundvol,oldsel,tm0cnt,i;
+	ewram=((REG_WRWAITCTL & 0x0F000000) == 0x0E000000)?1:0;
 
 	autoA=joycfg&A_BTN?0:1;
 	autoA|=joycfg&(A_BTN<<16)?0:2;
@@ -125,22 +131,19 @@ void ui() {
 	autoB|=joycfg&(B_BTN<<16)?0:2;
 
 	mainmenuitems=((u32)textstart>0x8000000?CARTMENUITEMS:MULTIBOOTMENUITEMS);//running from rom or multiboot?
-	FPSValue=0;			//Stop FPS meter
+	FPSValue=0;					//Stop FPS meter
 
 	soundvol=REG_SGCNT0_L;
-	REG_SGCNT0_L=0;		//stop sound (GB)
+	REG_SGCNT0_L=0;				//stop sound (GB)
 	tm0cnt=REG_TM0CNT;
-	REG_TM0CNT=0;		//stop sound (directsound)
+	REG_TM0CNT=0;				//stop sound (directsound)
 
-	REG_BG2HOFS=0x0100;	//Screen left
 	selected=0;
 	drawui1();
-	REG_BLDCNT=0x00f3;	//darken screen
-	REG_COLY=0x0000;	//set normal blending
 	for(i=0;i<8;i++)
 	{
 		waitframe();
-		REG_COLY=i;		//Darken screen
+		setdarknessgs(i);		//Darken game screen
 		REG_BG2HOFS=224-i*32;	//Move screen right
 	}
 
@@ -159,20 +162,19 @@ void ui() {
 		if(key&(A_BTN+UP+DOWN+LEFT+RIGHT))
 			drawui1();
 	} while(!(key&(B_BTN+R_BTN+L_BTN)));
-	writeconfig();		//save any changes
-	for(i=0;i<8;i++)
+	writeconfig();			//save any changes
+	for(i=1;i<9;i++)
 	{
-		REG_COLY=7-i;		//Lighten screen
-		REG_BG2HOFS=i*32;	//Move screen left
 		waitframe();
+		setdarknessgs(8-i);	//Lighten screen
+		REG_BG2HOFS=i*32;	//Move screen left
 	}
-	REG_BG2HOFS=0x0100;		//Screen left
 	while(key&(B_BTN)) {
 		waitframe();		//(polling REG_P1 too fast seems to cause problems)
 		key=~REG_P1;
 	}
 	REG_SGCNT0_L=soundvol;	//resume sound (GB)
-	REG_TM0CNT=tm0cnt;	//resume sound (directsound)
+	REG_TM0CNT=tm0cnt;		//resume sound (directsound)
 	cls(3);
 }
 
@@ -193,9 +195,10 @@ void subui(int menunr) {
 			if(menunr==3)fnlist3[selected]();
 			selected=oldsel;
 		}
-		if(key&(A_BTN+UP+DOWN+LEFT+RIGHT))
+		if(key&(A_BTN+UP+DOWN+LEFT+RIGHT)) {
 			if(menunr==2)drawui2();
 			if(menunr==3)drawui3();
+		}
 	} while(!(key&(B_BTN+R_BTN+L_BTN)));
 	scrollr();
 	while(key&(B_BTN)) {
@@ -226,26 +229,27 @@ void strmerge(char *dst,char *src1,char *src2) {
 	strcat(dst,src2);
 }
 
-char *const ctrltxt[]={"1P","2P","1P+2P","Link2P","Link3P","Link4P"};
 char *const autotxt[]={"OFF","ON","with R"};
 char *const vsynctxt[]={"ON","OFF","SLOWMO"};
 char *const sleeptxt[]={"5min","10min","30min","OFF"};
 char *const brightxt[]={"I","II","III","IIII","IIIII"};
+char *const memtxt[]={"Normal","Turbo"};
+char *const hostname[]={"Crap","Prot","GBA","GBP","NDS"};
+char *const ctrltxt[]={"1P","2P","1P+2P","Link2P","Link3P","Link4P"};
 char *const disptxt[]={"UNSCALED","UNSCALED (Auto)","SCALED","SCALED (w/sprites)"};
 char *const flicktxt[]={"No Flicker","Flicker"};
 char *const cntrtxt[]={"US (NTSC)","Europe (PAL)"};
+char *const emuname[]={"      PocketNES ","        PogoNES "};
 void drawui1() {
+	int i=0;
 	char str[30];
 
 	cls(1);
-	if(pogoshell){
-		drawtext(19,"                PogoNES v9.96",0);}
-	else{
-		if(gameboyplayer){
-			drawtext(19,"       PocketNES v9.96 on GBP",0);}
-		else{
-			drawtext(19,"              PocketNES v9.96",0);}
-	}
+	if(pogoshell) i=1;
+	strmerge(str,emuname[i],"v9.98 on ");
+	strmerge(str,str,hostname[gbaversion]);
+	drawtext(19,str,0);
+
 	strmerge(str,"B autofire: ",autotxt[autoB]);
 	text(0,str);
 	strmerge(str,"A autofire: ",autotxt[autoA]);
@@ -259,9 +263,9 @@ void drawui1() {
 		text(6,"Sleep");
 		text(7,"Restart");
 	} else {
-		text(6,"Manage SRAM");
-		text(7,"Save State");
-		text(8,"Load State");
+		text(6,"Save State->");
+		text(7,"Load State->");
+		text(8,"Manage SRAM->");
 		text(9,"Sleep");
 		text(10,"Restart");
 		text(11,"Exit");
@@ -277,14 +281,16 @@ void drawui2() {
 	text2(0,str);
 	strmerge(str,"FPS-Meter: ",autotxt[fpsenabled]);
 	text2(1,str);
-	strmerge(str,"Swap A-B: ",autotxt[(joycfg>>10)&1]);
-	text2(2,str);
 	strmerge(str,"Autosleep: ",sleeptxt[stime]);
+	text2(2,str);
+	strmerge(str,"EWRAM speed: ",memtxt[ewram]);
 	text2(3,str);
-	strmerge(str,"Autoload state: ",autotxt[autostate&1]);
+	strmerge(str,"Swap A-B: ",autotxt[(joycfg>>10)&1]);
 	text2(4,str);
-	strmerge(str,"Region: ",cntrtxt[(g_emuflags & 4)>>2]);		//USCOUNTRY=4
+	strmerge(str,"Autoload state: ",autotxt[autostate&1]);
 	text2(5,str);
+	strmerge(str,"Region: ",cntrtxt[(g_emuflags & 4)>>2]);		//USCOUNTRY=4
+	text2(6,str);
 }
 
 void drawui3() {
@@ -310,17 +316,17 @@ void drawclock() {
     {
 	strcpy(str,"                    00:00:00");
 	timer=gettime();
-	mod=(timer>>4)&3;		//Hours.
+	mod=(timer>>4)&3;				//Hours.
 	*(s++)=(mod+'0');
 	mod=(timer&15);
 	*(s++)=(mod+'0');
 	s++;
-	mod=(timer>>12)&15;
+	mod=(timer>>12)&15;				//Minutes.
 	*(s++)=(mod+'0');
 	mod=(timer>>8)&15;
 	*(s++)=(mod+'0');
 	s++;
-	mod=(timer>>20)&15;
+	mod=(timer>>20)&15;				//Seconds.
 	*(s++)=(mod+'0');
 	mod=(timer>>16)&15;
 	*(s++)=(mod+'0');
@@ -351,15 +357,11 @@ void autoBset() {
 		autoB=0;
 }
 
-void swapAB() {
-	joycfg^=0x400;
-}
-
-void controller() {		//see io.s: refreshNESjoypads
+void controller() {					//see io.s: refreshNESjoypads
 	u32 i=joycfg+0x20000000;
 	if(i>=0xe0000000)
 		i-=0xc0000000;
-	resetSIO(i);		//reset link state
+	resetSIO(i);					//reset link state
 }
 
 void sleepset() {
@@ -390,7 +392,7 @@ void brightset() {
 	gammavalue++;
 	if (gammavalue>4) gammavalue=0;
 	paletteinit();
-	PaletteTxAll();			//make new palette visible
+	PaletteTxAll();					//make new palette visible
 }
 
 void multiboot() {
@@ -404,50 +406,44 @@ void multiboot() {
 		else
 			drawtext(9,"  Game is too big to send.",0);
 		if(i==2) drawtext(10,"       (Check cable?)",0);
-		for(i=0;i<90;i++)		//wait a while
+		for(i=0;i<90;i++)			//wait a while
 			waitframe();
 	}
 }
 
 void restart() {
-	writeconfig();		//save any changes
+	writeconfig();					//save any changes
 	scrolll(1);
-	REG_BLDCNT=0;		//no dark
-	__asm {mov r0,#0x3007f00}	//stack reset
+	__asm {mov r0,#0x3007f00}		//stack reset
 	__asm {mov sp,r0}
 	rommenu();
 }
 void exit() {
-	writeconfig();		//save any changes
+	writeconfig();					//save any changes
 	fadetowhite();
-	REG_DISPCNT=FORCE_BLANK;	//screen OFF
+	REG_DISPCNT=FORCE_BLANK;		//screen OFF
 	REG_BG0HOFS=0;
 	REG_BG0VOFS=0;
-	REG_BLDCNT=0;		//no blending
+	REG_BLDCNT=0;					//no blending
 	doReset();
 }
 
 void sleep() {
 	fadetowhite();
 	suspend();
-	REG_BLDCNT=0x00f3;	//restore screen
-	REG_COLY=7;		//restore screen
+	setdarknessgs(7);				//restore screen
 	while((~REG_P1)&0x3ff) {
-		while(REG_VCOUNT>=160) {};	//wait a while
-		while(REG_VCOUNT<160) {};	//(polling REG_P1 too fast seems to cause problems)
+		waitframe();				//(polling REG_P1 too fast seems to cause problems)
 	}
 }
 void fadetowhite() {
 	int i;
-	REG_BLDCNT=0x00f3;	//darken screen
-	for(i=7;i>=0;i--)
-	{
-		REG_COLY=i;	//go from dark to normal
+	for(i=7;i>=0;i--) {
+		setdarknessgs(i);			//go from dark to normal
 		waitframe();
 	}
-	REG_BLDCNT=0xbf;	//(brightness increase)
-	for(i=0;i<17;i++) {	//fade to white
-		REG_COLY=i;
+	for(i=0;i<17;i++) {				//fade to white
+		setbrightnessall(i);		//go from normal to white
 		waitframe();
 	}
 }
@@ -456,8 +452,8 @@ void scrolll(int f) {
 	int i;
 	for(i=0;i<9;i++)
 	{
-		if(f) REG_COLY=8+i;	//Darken screen
-		REG_BG2HOFS=i*32;	//Move screen left
+		if(f) setdarknessgs(8+i);	//Darken screen
+		REG_BG2HOFS=i*32;			//Move screen left
 		waitframe();
 	}
 }
@@ -466,13 +462,22 @@ void scrollr() {
 	for(i=8;i>=0;i--)
 	{
 		waitframe();
-		REG_BG2HOFS=i*32;	//Move screen left
+		REG_BG2HOFS=i*32;			//Move screen right
 	}
-	cls(2);					//Clear BG2
+	cls(2);							//Clear BG2
 }
 
-void autostateset() {
-	autostate = (autostate^1)&1;
+void ewramset() {
+	ewram^=1;
+	if(ewram==1){
+		REG_WRWAITCTL = (REG_WRWAITCTL & ~0x0F000000) | 0x0E000000;		//1 waitstate, overclocked
+	}else{
+		REG_WRWAITCTL = (REG_WRWAITCTL & ~0x0F000000) | 0x0D000000;		//2 waitstates, normal
+	}
+}
+
+void swapAB() {
+	joycfg^=0x400;
 }
 
 void display() {
@@ -486,8 +491,12 @@ void flickset() {
 	flicker++;
 	if(flicker > 1){
 		flicker=0;
-		twitch=0;
+		twitch=1;
 	}
+}
+
+void autostateset() {
+	autostate = (autostate^1)&1;
 }
 
 void bajs(){

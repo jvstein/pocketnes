@@ -1,4 +1,4 @@
-	IMPORT sound_reset_
+	IMPORT Sound_reset
 	IMPORT timer1interrupt
 	IMPORT updatesound
 	IMPORT make_freq_table

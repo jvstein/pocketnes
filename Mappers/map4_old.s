@@ -59,12 +59,8 @@ w8001
 	tst r1,#0x80	;reverse CHR?
 	and r1,r1,#7
 	orrne r1,r1,#8
-	ldr pc,[pc,r1,lsl#2]
-	DCD 0
-;----------------------------------------------------------------------------
-commandlist	DCD cmd0,cmd1,chr4_,chr5_,chr6_,chr7_,cmd6,mapAB_
-		DCD cmd0x,cmd1x,chr0_,chr1_,chr2_,chr3_,cmd6,mapAB_
-;----------------------------------------------------------------------------
+	adr r2,commandlist
+	ldr pc,[r2,r1,lsl#2]
 
 cmd0			;0000-07ff
 	mov r0,r0,lsr#1
@@ -108,9 +104,8 @@ write1		;$A000-A001
 write2		;C000-C001
 ;----------------------------------------------------------------------------
 	tst addy,#1
-	streqb r0,latch
-	movne r0,#0
-	strneb r0,countdown
+	streqb r0,countdown
+	strneb r0,latch
 	mov pc,lr
 ;----------------------------------------------------------------------------
 write3		;E000-E001
@@ -129,17 +124,23 @@ MMC3_IRQ_Hook
 	cmp r0,#240		;not rendering?
 	bhi hk0			;bye..
 
-	ldrb r0,countdown
-	subs r0,r0,#1
-	ldrmib r0,latch
-	strb r0,countdown
-	bne hk0
-
 	ldrb r1,irqen
 	cmp r1,#0
 	beq hk0
 
+	ldrb r0,countdown
+	subs r0,r0,#1
+	ldrmib r0,latch
+	strb r0,countdown
+	bpl hk0
+
+	mov r1,#0
+	strb r1,irqen
 	b irq6502
 hk0
 	fetch 0
+;----------------------------------------------------------------------------
+commandlist	DCD cmd0,cmd1,chr4_,chr5_,chr6_,chr7_,cmd6,mapAB_
+		DCD cmd0x,cmd1x,chr0_,chr1_,chr2_,chr3_,cmd6,mapAB_
+;----------------------------------------------------------------------------
 	END

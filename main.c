@@ -39,7 +39,7 @@ int roms;//total number of roms
 
 char pogoshell_romname[32];	//keep track of rom name (for state saving, etc)
 int rtc=0;
-int pogones=0;
+int pogoshell=0;
 int gameboyplayer=0;
 
 int ne=0x454e;
@@ -47,12 +47,12 @@ void C_entry() {
 	int i;
 	vu16 *timeregs=(u16*)0x080000c8;
 	u32 temp=(u32)(*(u8**)0x0203FBFC);
-	if((temp & 0xFE000000) == 0x08000000) pogones=1;
-	else pogones=0;
+	if((temp & 0xFE000000) == 0x08000000) pogoshell=1;
+	else pogoshell=0;
 	*timeregs=1;
 	if(*timeregs==1) rtc=1;
 
-	if(pogones){
+	if(pogoshell){
 		u32 *magptr=(u32*)0x08000000;
 		u32 *fileptr;
 		char *d;
@@ -163,10 +163,11 @@ void rommenu(void) {
 	cls(3);
 	REG_BG2HOFS=0x0100;		//Screen left
 	REG_BLDCNT=0x00f3;	//darken screen
+	REG_COLY=16;
 	REG_BG2CNT=0x4600;	//16color 512x256 CHRbase0 SCRbase6 Priority0
 	REG_DISPCNT=BG2_EN|OBJ_1D; //mode0, 1d sprites, main screen turn on
 	backup_nes_sram();
-	if(pogones)
+	if(pogoshell)
 	{
 		loadcart(0,g_emuflags&0x304);		//Also save country
 		get_saved_sram();
@@ -195,6 +196,7 @@ void rommenu(void) {
 				waitframe();
 				REG_BG2HOFS=224-i*32;	//Move screen right
 			}
+			REG_COLY=7;
 		}
 		do {
 			key=getinput();
@@ -212,7 +214,7 @@ void rommenu(void) {
 				sel++;
 			selectedrom=sel%=romz;
 			if(lastselected!=sel) {
-				i=drawmenu(sel);
+				if(romz>1)i=drawmenu(sel);
 				loadcart(sel,i|(g_emuflags&0x300));  //(keep old gfxmode)
 				get_saved_sram();
 				lastselected=sel;
@@ -239,7 +241,7 @@ void rommenu(void) {
 //return ptr to Nth ROM (including rominfo struct)
 u8 *findrom(int n) {
 	u8 *p=textstart;
-	while(!pogones && n--)
+	while(!pogoshell && n--)
 		p+=*(u32*)(p+32)+sizeof(romheader);
 	return p;
 }
@@ -317,7 +319,7 @@ void drawtext(int row,char *str,int hilite) {
 		here[i]=str[i]|hilite;
 		i++;
 	}
-	for(;i<29;i++)
+	for(;i<31;i++)
 		here[i]=0x0120;
 }
 

@@ -11,7 +11,7 @@ extern u8 Image$$RW$$Limit;
 extern u32 romnum;	//from cart.s
 extern u8 *textstart;	//from main.c
 
-extern int pogones;
+extern int pogoshell;
 
 romheader mb_header;
 
@@ -104,7 +104,7 @@ int SendMBImageToClient(void) {
 //	emusize=((u32)(&Image$$RO$$Limit)&0x3ffff)+((u32)(&Image$$RW$$Limit)&0x7fff);
 	emusize1=((u32)(&Image$$RO$$Limit)&0x3ffff);
 	emusize2=((u32)(&Image$$RW$$Limit)&0x7fff);
-	if(pogones) romsize=48+16+(*(u8*)(findrom(romnum)+48+4))*16*1024+(*(u8*)(findrom(romnum)+48+5))*8*1024;  //need to read this from ROM
+	if(pogoshell) romsize=48+16+(*(u8*)(findrom(romnum)+48+4))*16*1024+(*(u8*)(findrom(romnum)+48+5))*8*1024;  //need to read this from ROM
 	else romsize=sizeof(romheader)+*(u32*)(findrom(romnum)+32);
 	if(emusize1+romsize>max_multiboot_size) return 3;
 
@@ -123,7 +123,7 @@ int SendMBImageToClient(void) {
 
 	REG_RCNT=0;			//non-general purpose comms
 
-	i=2500;
+	i=250;
 	do {
 		DelayCycles(10);
 		j=xfer(0x6200);
@@ -208,7 +208,7 @@ int SendMBImageToClient(void) {
 	p=(u16*)0x3000000;			//(from iwram)
 	for(;emusize2;emusize2-=2)		//send second part of emu
 		xfer(*(p++));
-	if(pogones)
+	if(pogoshell)
 	{
 		mb_header.filesize=romsize;
 		p=(u16*)&mb_header;	//send header

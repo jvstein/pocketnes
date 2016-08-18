@@ -11,15 +11,17 @@
 extern u8 Image$$RO$$Limit;
 extern u8 g_cartflags;	//(from iNES header)
 extern char g_scaling;	//(cart.s) current display mode
+extern char flicker;	//from ppu.s
+extern u8 stime;		//from main.c
 extern u8 *textstart;	//from main.c
 
-extern int pogones;
+extern int pogoshell;
 
 int totalstatesize;	//how much SRAM is used
 
 //-------------------
 u8 *findrom(int);
-void cls(void);		//main.c
+void cls(int);		//main.c
 void drawtext(int,char*,int);
 void scrolll(void);
 void scrollr(void);
@@ -53,7 +55,7 @@ typedef struct {		//(modified stateheader)
 	u16 size;
 	u16 type;	//=CONFIGSAVE
 	char displaytype;
-	char reserved1;
+	char sleepflick;
 	char reserved2;
 	char reserved3;
 	u32 sram_checksum;	//checksum of rom using SRAM e000-ffff	
@@ -113,9 +115,9 @@ u32 checksum(u8 *p) {
 
 void writeerror() {
 	int i;
-	cls();
-	drawtext(9,"  Write error! Memory full.",0);
-	drawtext(10,"     Delete some games.",0);
+	cls(2);
+	drawtext(32+9, "  Write error! Memory full.",0);
+	drawtext(32+10,"     Delete some games.",0);
 	for(i=90;i;--i)
 		waitframe();
 }
@@ -252,7 +254,7 @@ stateheader* drawstates(int menutype,int *menuitems,int *menuoffset) {
 	*menuoffset=offset;
 	
 	startline=FIRSTLINE-offset;
-	cls();
+	cls(2);
 	statecount=0;
 	total=8;	//header+null terminator
 	while(sh->size) {
@@ -298,7 +300,7 @@ void compressstate(lzo_uint size,u16 type,u8 *src,void *workspace) {
 	lzo_uint compressedsize;
 	stateheader *sh;
 
-	lzo1x_1_compress(src,size,BUFFER3+sizeof(stateheader),&compressedsize,workspace);
+	lzo1x_1_compress(src,size,BUFFER3+sizeof(stateheader),&compressedsize,workspace);	//workspace needs to be 64k
 
 	//setup header:
 	sh=(stateheader*)BUFFER3;
@@ -307,7 +309,7 @@ void compressstate(lzo_uint size,u16 type,u8 *src,void *workspace) {
 	sh->compressedsize=compressedsize;	//size of compressed state
 	sh->framecount=frametotal;
 	sh->checksum=checksum((u8*)romstart);	//checksum
-    if(pogones)
+    if(pogoshell)
     {
 		strcpy(sh->title,pogoshell_romname);
     }
@@ -431,7 +433,8 @@ void quicksave() {
 		return;
 
 	REG_BLDCNT=0x00f3;	//darken
-	drawtext(9,"           Saving.",0);
+	REG_COLY=7;
+	drawtext(32+9,"           Saving.",0);
 
 	i=savestate(BUFFER2);
 	compressstate(i,STATESAVE,BUFFER2,BUFFER1);
@@ -439,7 +442,7 @@ void quicksave() {
 	if(i<0) i=65536;	//make new save if one doesn't exist
 	if(!updatestates(i,0,STATESAVE))
 		writeerror();
-	cls();
+	cls(2);
 }
 
 void backup_nes_sram() {
@@ -456,7 +459,7 @@ void backup_nes_sram() {
 		i=findstate(cfg->sram_checksum,SRAMSAVE,&sh);//find out where to save
 		if(i>=0) {
 			memcpy(BUFFER3,sh,sizeof(stateheader));//use old info, in case the rom for this sram is gone and we can't look up its name.
-			lzo1x_1_compress(MEM_SRAM+0xe000,0x2000,BUFFER3+sizeof(stateheader),&compressedsize,BUFFER2);
+			lzo1x_1_compress(MEM_SRAM+0xe000,0x2000,BUFFER3+sizeof(stateheader),&compressedsize,BUFFER2);	//workspace needs to be 64k
 			sh=(stateheader*)BUFFER3;
 			sh->size=(compressedsize+sizeof(stateheader)+3)&~3;	//size of compressed state+header, word aligned
 			sh->compressedsize=compressedsize;	//size of compressed state
@@ -550,8 +553,8 @@ void loadstatemenu() {
 				i++;
 			} while(i<roms);
 			if(i<8192) {
-				cls();
-				drawtext(9,"       ROM not found.",0);
+				cls(2);
+				drawtext(32+9,"       ROM not found.",0);
 				for(i=0;i<60;i++)	//(1 second wait)
 					waitframe();
 			}
@@ -574,7 +577,7 @@ const configdata configtemplate={
 
 void writeconfig() {
 	configdata *cfg;
-	int i;
+	int i,j;
 
 	if(!using_flashcart())
 		return;
@@ -585,6 +588,9 @@ void writeconfig() {
 		cfg=(configdata*)BUFFER3;
 	}
 	cfg->displaytype=g_scaling;				//store current display type
+	j = stime & 0xF;					//store current autosleep time
+	j |= ((flicker & 0x1)^1)<<4;				//store current flicker setting
+	cfg->sleepflick = j;
 	if(g_cartflags&2) {					//update sram owner
 			cfg->sram_checksum=checksum(romstart);
 	}
@@ -596,7 +602,7 @@ void writeconfig() {
 }
 
 void readconfig() {
-	int i;
+	int i,j;
 	configdata *cfg;
 	if(!using_flashcart())
 		return;
@@ -604,10 +610,13 @@ void readconfig() {
 	i=findstate(0,CONFIGSAVE,(stateheader**)&cfg);
 	if(i>=0) {
 		g_scaling=cfg->displaytype;
+		j = cfg->sleepflick;
+		stime = (j & 0xF);				//restore current autosleep time
+		flicker = ((j & 0x10)^0x10)>>4;			//restore current flicker setting
 	}
 }
 void clean_nes_sram() {
-	int i;
+	int i,j;
 	u8 *nes_sram_ptr = MEM_SRAM+0xe000;
 	configdata *cfg;
 
@@ -622,6 +631,9 @@ void clean_nes_sram() {
 		cfg=(configdata*)BUFFER3;
 	}
 	cfg->displaytype=g_scaling;				//store current display type
+	j = stime & 0xF;					//store current autosleep time
+	j |= (flicker & 0xF)<<4;				//store current flicker setting
+	cfg->sleepflick = j;
 	cfg->sram_checksum=0;			// we don't want to save the empty sram
 	if(i<0) {	//create new config
 		updatestates(0,0,CONFIGSAVE);

@@ -103,8 +103,11 @@ mappertbl
 	DCD 97,mapper97init
 	DCD 99,mapper99init
 	DCD 105,mapper105init
+	DCD 118,mapper4init
+	DCD 119,mapper4init
 	DCD 151,mapper151init
 	DCD 152,mapper152init
+	DCD 158,mapper64init
 	DCD 180,mapper180init
 	DCD 228,mapper228init
 	DCD 232,mapper232init

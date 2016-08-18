@@ -373,7 +373,7 @@ vbl4	add r1,r1,#4
 	bmi vbl1
 vbl5
 
-        ldrb r0,emuflags+1             ;get DMA1,3 source..
+	ldrb r0,emuflags+1             ;get DMA1,3 source..
 	cmp r0,#SCALED
 	ldrhs r3,=DMA1BUFF
 	ldrhs r4,=DMA3BUFF
@@ -447,6 +447,20 @@ newframe	;called at line 0	(r0-r9 safe to use)
 	mov r0,#0
 	str r0,scrollXline
 ;--------------------------
+	ldr r0,scrollYold
+	ldr r1,scrollYline
+	mov addy,#239
+	bl scrollYfinish
+	mov r0,#0
+	str r0,scrollYline
+	ldr r0,scrollY		;r0=y
+	str r0,scrollYold
+;--------------------------
+;	ldr r0,scrollY
+;	mov r1,#0
+;	bl initY
+
+
 	ldr r0,scrollbuff
 	ldr r1,dmascrollbuff
 	str r1,scrollbuff
@@ -460,10 +474,6 @@ newframe	;called at line 0	(r0-r9 safe to use)
 	adrl r0,windowtop	;load wtop, store in wtop+4.......load wtop+8, store in wtop+12
 	ldmia r0,{r1-r3}	;load with post increment
 	stmib r0,{r1-r3}	;store with pre increment
-
-	ldr r0,scrollY
-	mov r1,#0
-	bl initY
 
 	ldrb r0,emuflags+1             ;refresh DMA1,DMA2 buffers
 	cmp r0,#SCALED				;not needed for unscaled mode..
@@ -612,8 +622,7 @@ stat_R		;(2002)
 ;----------------------------------------------------------------------------
 	ldrb r0,emuflags       ;probably in a polling loop
 	tst r0,#USEPPUHACK
-	andne cycles,cycles,#0xF			;let's help out
-;	andne cycles,cycles,#CYC_MASK		;let's help out
+	andne cycles,cycles,#CYC_MASK		;let's help out
 
 	mov r0,#0
 	strb r0,toggle
@@ -715,13 +724,18 @@ low
 	bl newX2
 	ldr lr,[sp],#4
 ;- - - - - -
-	ldr r1,scanline
-	cmp r1,#239
-	movhi pc,lr	;scanline>239: exit
-
 	ldr r0,scrollY		;r0=y
-	ldr r1,scanline		;r1=scanline
-initY			;? jumps here
+	add r0,r0,#1
+	adr r1,scrollYold
+	swp r0,r0,[r1]		;r0=lastval
+
+	adr r2,scrollYline
+	ldr addy,scanline	;addy=scanline
+	cmp addy,#239
+	movhi addy,#239
+	swp r1,addy,[r2]	;r1=lastline, lastline=scanline
+
+scrollYfinish		;newframe jumps here
 	stmfd sp!,{r3,r4,lr}
 	and r4,r0,#0xff
 	cmp r4,#239		;if(y&ff>239)
@@ -734,7 +748,7 @@ initY			;? jumps here
 	add r0,r0,r2		;y+=windowtop
 	ldr r2,scrollbuff
 	add r2,r2,#2		;r2+=2, flag 2006 write
-	add r3,r2,#240*4	;r3=end2
+	add r3,r2,addy,lsl#2	;r3=end2
 	add r2,r2,r1,lsl#2	;r2=base
 	add r1,r2,r4,lsl#2	;r1=end1
 	cmp r1,r3
@@ -749,6 +763,9 @@ xy2
 	strloh r0,[r2],#4
 	blo xy2
 	ldmfd sp!,{r3,r4,pc}
+
+scrollYold DCD 0 ;last write
+scrollYline DCD 0 ;..was when?
 ;----------------------------------------------------------------------------
 vmdata_R	;(2007)
 ;----------------------------------------------------------------------------

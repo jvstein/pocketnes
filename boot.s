@@ -33,7 +33,7 @@
 	DCB 169,99,190,3,1,78,56,226,249,162,52,255,187,62,3,68
 	DCB 120,0,144,203,136,17,58,148,101,192,124,99,135,240,60,175
 	DCB 214,37,228,139,56,10,172,114,33,212,248,7
-	DCB "PocketNES   "	;title
+	DCB "PocketNESS  "	;title
 	DCB "PNES"		;gamecode
 	DCW 0			;maker
 	DCB 0x96		;fixed value
@@ -41,13 +41,13 @@
 	DCB 0			;device type
 	DCB 0,0,0,0,0,0,0	;unused
 	DCB 0			;version
-	DCB 0x6f		;complement check
+	DCB 0x3c		;complement check
 	DCW 0			;unused
 ;----------------------------------------------------------
 __main
 ;----------------------------------------------------------
 	b %F0
-	% 28			;multiboot struct
+	% 28			;multiboot struct. clock regs also?
 0
 	[ BUILD = "DEBUG"
 		mov r0, #0x10	;usr mode
@@ -74,11 +74,14 @@ __main
 		add r5,r5,#0x6000000		;RW code ptr=8xxxxxx
 
 		ldr r1,=|Image$$RO$$Base|	;copy rom code to exram
+		adr r0,headcopy				; XG2 resets when 0x08000000 is accessed.
+		add r3,r1,#192				; EZFA mess with the GBA header
+_5		cmp r1,r3
+		ldrcc r2, [r0], #4
+		strcc r2, [r1], #4
+		bcc _5
 		add r0,r1,#0x6000000
 		ldr r3,=|Image$$RO$$Limit|
-		add r0,r0,#4			; XG2 resets when 0x08000000 is accessed.
-		ldr r2,=0xEA00002E
-		str r2, [r1], #4
 _2		cmp r1,r3
 		ldrcc r2, [r0], #4
 		strcc r2, [r1], #4
@@ -139,6 +142,29 @@ giveup	bhi giveup
 	ldr r1,=C_entry
 	bx r1
 ;----------------------------------------------------------
+headcopy
+	DCD 0xEA00002E			;b main
+	DCB 36,255,174,81,105,154,162,33,61,132,130,10,132,228,9,173
+	DCB 17,36,139,152,192,129,127,33,163,82,190,25,147,9,206,32
+	DCB 16,70,74,74,248,39,49,236,88,199,232,51,130,227,206,191
+	DCB 133,244,223,148,206,75,9,193,148,86,138,192,19,114,167,252
+	DCB 159,132,77,115,163,202,154,97,88,151,163,39,252,3,152,118
+	DCB 35,29,199,97,3,4,174,86,191,56,132,0,64,167,14,253
+	DCB 255,82,254,3,111,149,48,241,151,251,192,133,96,214,128,37
+	DCB 169,99,190,3,1,78,56,226,249,162,52,255,187,62,3,68
+	DCB 120,0,144,203,136,17,58,148,101,192,124,99,135,240,60,175
+	DCB 214,37,228,139,56,10,172,114,33,212,248,7
+	DCB "PocketNESS  "	;title
+	DCB "PNES"		;gamecode
+	DCW 0			;maker
+	DCB 0x96		;fixed value
+	DCB 0			;unit code
+	DCB 0			;device type
+	DCB 0,0,0,0,0,0,0	;unused
+	DCB 0			;version
+	DCB 0x3c		;complement check
+	DCW 0			;unused
+
 font
 	INCBIN font.lz77
 ;	INCBIN font.bin

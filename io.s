@@ -670,8 +670,11 @@ refreshNESjoypads	;call every frame
 		movcss addy,r1,lsr#9	;R?
 		andcs r1,r1,r2,lsr#16
 	adr addy,dulr2rldu
-	and r1,r1,#0x0f		;selectstartAB
 	ldrb r0,[addy,r0,lsr#4]	;downupleftright
+	and r1,r1,#0x0f			;startselectBA
+	tst r2,#0x400			;Swap A/B?
+	adrne addy,ssba2ssab
+	ldrneb r1,[addy,r1]	;startselectBA
 	orr r0,r1,r0		;r0=joypad state
 
 	tst r2,#0x80000000
@@ -772,35 +775,38 @@ sendreset       ;exits with r1=emuflags, r4=REG_SIOCNT, Z=1 if send was OK
 	mov pc,lr
 
 gbpadress DCD 0x04000000
-joycfg DCD 0x40ff01ff ;byte0=auto mask, byte1=(saves R), byte2=R auto mask
+joycfg DCD 0x40ff01ff ;byte0=auto mask, byte1=(saves R)bit2=SwapAB, byte2=R auto mask
 ;bit 31=single/multi, 30,29=1P/2P, 27=(multi) link active, 24=reset signal received
-joy0state DCD 0
-joy1state DCD 0
-joy2state DCD 0
-joy3state DCD 0
+joy0state DCB 0
+joy1state DCB 0
+joy2state DCB 0
+joy3state DCB 0
 joy0serial DCD 0
 joy1serial DCD 0
 nrplayers DCD 0		;Number of players in multilink.
 dulr2rldu DCB 0x00,0x80,0x40,0xc0, 0x10,0x90,0x50,0xd0, 0x20,0xa0,0x60,0xe0, 0x30,0xb0,0x70,0xf0
+ssba2ssab DCB 0x00,0x02,0x01,0x03, 0x04,0x06,0x05,0x07, 0x08,0x0a,0x09,0x0b, 0x0c,0xe0,0xd0,0x0f
 ;----------------------------------------------------------------------------
 joy0_W		;4016
 ;----------------------------------------------------------------------------
 	tst r0,#1
 	movne pc,lr
-;	mov r2,#-1
+	ldr r2,nrplayers
+	cmp r2,#3
+	mov r2,#-1
 
-	ldr r0,joy0state
-	ldr r1,joy2state
+	ldrb r0,joy0state
+	ldrb r1,joy2state
 	orr r0,r0,r1,lsl#8
-;	orr r0,r0,r2,lsl#8		;for normal joypads.
-	orr r0,r0,#0x00080000	;4player adapter
+	orrmi r0,r0,r2,lsl#8	;for normal joypads.
+	orrpl r0,r0,#0x00080000	;4player adapter
 	str r0,joy0serial
 
-	ldr r0,joy1state
-	ldr r1,joy3state
+	ldrb r0,joy1state
+	ldrb r1,joy3state
 	orr r0,r0,r1,lsl#8
-;	orr r0,r0,r2,lsl#8		;for normal joypads.
-	orr r0,r0,#0x00040000	;4player adapter
+	orrmi r0,r0,r2,lsl#8	;for normal joypads.
+	orrpl r0,r0,#0x00040000	;4player adapter
 	str r0,joy1serial
 	mov pc,lr
 ;----------------------------------------------------------------------------
@@ -816,7 +822,7 @@ joy0_R		;4016
 	orreq nes_nz,nes_nz,#0x40
 	moveq pc,lr
 
-	ldr r1,joy0state
+	ldrb r1,joy0state
 	tst r1,#8		;start=coin (VS)
 	orrne nes_nz,nes_nz,#0x40
 

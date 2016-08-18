@@ -7,7 +7,7 @@ C EQU 2_00000001	;6502 flags
 Z EQU 2_00000010
 I EQU 2_00000100
 D EQU 2_00001000
-B EQU 2_00010000
+B EQU 2_00010000	;(allways 1 except when IRQ pushes it)
 R EQU 2_00100000	;(locked at 1)
 V EQU 2_01000000
 N EQU 2_10000000
@@ -38,26 +38,22 @@ N EQU 2_10000000
 
 	MACRO		;pack 6502 flags into r0
 	encodeP $extra
-	and r1,nes_nz,#0x80000000
-	ldr r0,nes_di			;DI
-	orr r0,r0,r1,lsr#24		;N
+	and r0,cycles,#CYC_D+CYC_I+CYC_C
+	tst nes_nz,#PSR_N
+	orrne r0,r0,#N				;N
 	tst nes_nz,#0xff
-	orreq r0,r0,#Z			;Z
-	tst nes_c,#PSR_C
-	orrne r0,r0,#C			;C
-	ldr r1,nes_v
-	tst r1,#PSR_V		;V
+	orreq r0,r0,#Z				;Z
+	tst nes_v,#PSR_V			;V
 	orrne r0,r0,#V
-	orr r0,r0,#$extra		;..
+	orr r0,r0,#$extra			;B...
 	MEND
 
 	MACRO		;unpack 6502 flags from r0
 	decodeP
-	and r1,r0,#D+I
-	str r1,nes_di			;DI
-	mov r1,r0,lsl#22
-	str r1,nes_v			;V
-	mov nes_c,r0,lsl#29		;C
+	bic cycles,cycles,#CYC_D+CYC_I+CYC_C
+	and r1,r0,#D+I+C
+	orr cycles,cycles,r1		;DIC
+	mov nes_v,r0,lsl#22			;V
 	mov nes_nz,r0,lsl#24		;N
 	tst r0,#Z
 	orreq nes_nz,nes_nz,#1		;Z
@@ -69,6 +65,19 @@ N EQU 2_10000000
 	ldrplb r0,[nes_pc],#1
 	ldrpl pc,[nes_optbl,r0,lsl#2]
 	ldr pc,nexttimeout
+	MEND
+
+	MACRO
+	fetch_c $count				;same as fetch except it adds the Carry (bit 0) also.
+	sbcs cycles,cycles,#$count*3*CYCLE
+	ldrplb r0,[nes_pc],#1
+	ldrpl pc,[nes_optbl,r0,lsl#2]
+	ldr pc,nexttimeout
+	MEND
+
+	MACRO
+	clearcycles
+	and cycles,cycles,#CYC_MASK		;Save CPU bits
 	MEND
 
 	MACRO
@@ -139,13 +148,12 @@ N EQU 2_10000000
 	MACRO
 	pop16		;pop nes_pc
 	ldrb r2,nes_s
-	add r2,r2,#1
-	orr r2,r2,#0x100
-	ldrb nes_pc,[nes_zpage,r2]
-	add r2,r2,#1
+	add r2,r2,#2
 	strb r2,nes_s
 	ldr r2,nes_s
-	ldrb r0,[r2]
+	ldrb r0,[r2],#-1
+	orr r2,r2,#0x100
+	ldrb nes_pc,[r2]
 	orr nes_pc,nes_pc,r0,lsl#8
 	MEND		;r0,r1=?
 
@@ -250,12 +258,12 @@ _type	SETA      _ZP
 	opADC
 	readmem
 	eor nes_nz,nes_nz,#0xff
-	msr cpsr_f,nes_c        ;get C
+	movs r1,cycles,ror#1		;get C
 	sbcs nes_a,nes_a,nes_nz,lsl#24
-	mov nes_nz,nes_a,asr#24 ;NZ
-	mrs nes_c,cpsr          ;C
-	str nes_c,nes_v         ;V
 	and nes_a,nes_a,#0xff000000
+	mov nes_nz,nes_a,asr#24		;NZ
+	mrs nes_v,cpsr				;V
+	orr cycles,cycles,#CYC_C	;Prepare C
 	MEND
 
 	MACRO
@@ -269,15 +277,16 @@ _type	SETA      _ZP
 	opASL
 	[ _type=_ABS
 		readmemabs
-		 mov nes_c,nes_nz,lsl#22	;C	;Do this first so we get rid of the signextend.
-		 mov r0,nes_c,lsr#21
-		 orr nes_nz,r0,r0,lsl#24	;NZ
+		 movs nes_nz,nes_nz,lsl#25
+		 mov nes_nz,nes_nz,asr#24	;NZ
+		 and r0,nes_nz,#0xff
+		 orr cycles,cycles,#CYC_C	;Prepare C
 		writemem
 	|
 		ldrb r0,[nes_zpage,addy]
 		 add r0,r0,r0
 		 orrs nes_nz,r0,r0,lsl#24	;NZ
-		 mrs nes_c,cpsr			;C
+		 orr cycles,cycles,#CYC_C	;Prepare C
 		strb r0,[nes_zpage,addy]
 	]
 	MEND
@@ -286,8 +295,7 @@ _type	SETA      _ZP
 	opBIT
 	readmem
 	and r0,nes_nz,nes_a,lsr#24	;Z
-	mov r1,nes_nz,lsl#22
-	str r1,nes_v			;V
+	mov nes_v,nes_nz,lsl#22
 	orr nes_nz,r0,nes_nz,lsl#24	;N
 	MEND
 
@@ -296,15 +304,15 @@ _type	SETA      _ZP
 	readmem
 	subs nes_nz,$x,nes_nz,lsl#24
 	mov nes_nz,nes_nz,asr#24	;NZ
-	mrs nes_c,cpsr			;C
+	orr cycles,cycles,#CYC_C	;Prepare C
 	MEND
 
 	MACRO
 	opDEC
 	[ _type=_ABS
 		readmemabs
+		sub nes_nz,nes_nz,#1
 		and r0,nes_nz,#0xff
-		sub r0,r0,#1
 		orr nes_nz,r0,r0,lsl#24	;NZ
 		writemem
 	|
@@ -347,14 +355,14 @@ _type	SETA      _ZP
 	opLSR
 	[ _type=_ABS
 		readmemabs
-		mov nes_c,nes_nz,lsl#29
-		and nes_nz,nes_nz,#0xfe	;(N=0)
-		mov r0,nes_nz,lsr#1
+		movs nes_nz,nes_nz,lsr#1	;Z, (N=0)
+		and r0,nes_nz,#0x7f
+		orr cycles,cycles,#CYC_C	;Prepare C
 		writemem
 	|
 		ldrb nes_nz,[nes_zpage,addy]
-		movs nes_nz,nes_nz,lsr#1	;NZ
-		mrs nes_c,cpsr			;C
+		movs nes_nz,nes_nz,lsr#1	;Z, (N=0)
+		orr cycles,cycles,#CYC_C	;Prepare C
 		strb nes_nz,[nes_zpage,addy]
 	]
 	MEND
@@ -368,53 +376,35 @@ _type	SETA      _ZP
 
 	MACRO
 	opROL
-	[ _type=_ABS
-		readmemabs
-		 msr cpsr_f,nes_c	;get C
-		 adc r0,nes_nz,nes_nz
-		 orrs nes_nz,r0,r0,lsl#24 ;NZ
-		 mrs nes_c,cpsr		;C
-		writemem
-	|
-		ldrb r0,[nes_zpage,addy]
-		 msr cpsr_f,nes_c	;get C
-		 adc r0,r0,r0
-		 orrs nes_nz,r0,r0,lsl#24 ;NZ
-		 mrs nes_c,cpsr		;C
-		strb r0,[nes_zpage,addy]
-	]
+	readmem
+	 and nes_nz,nes_nz,#0xff
+	 movs r1,cycles,ror#1			;get C
+	 adc r0,nes_nz,nes_nz
+	 orrs nes_nz,r0,r0,lsl#24		;NZ
+	 orr cycles,cycles,#CYC_C		;Prepare C
+	writemem
 	MEND
 
 	MACRO
 	opROR
-	[ _type=_ABS
-		readmemabs
-		 mov r0,nes_nz,lsl#24
-		 orr r0,r0,nes_c,lsr#29
-		 movs r0,r0,ror#25
-		 mrs nes_c,cpsr
-		 orr nes_nz,r0,r0,lsl#24
-		writemem
-	|
-		ldrb r0,[nes_zpage,addy]
-		 tst nes_c,#PSR_C
-		 orrne r0,r0,#0x100
-		 movs r0,r0,lsr#1
-		 mrs nes_c,cpsr
-		 orr nes_nz,r0,r0,lsl#24
-		strb r0,[nes_zpage,addy]
-	]
+	readmemabs
+	 orr nes_nz,cycles,nes_nz,lsl#24
+	 mov nes_nz,nes_nz,ror#1
+	 movs nes_nz,nes_nz,asr#24
+	 and r0,nes_nz,#0xff
+	 orr cycles,cycles,#CYC_C		;Prepare C
+	writemem
 	MEND
 
 	MACRO
 	opSBC
 	readmem
-	msr cpsr_f,nes_c        ;get C
+	movs r1,cycles,ror#1		;get C
 	sbcs nes_a,nes_a,nes_nz,lsl#24
-	mov nes_nz,nes_a,asr#24 ;NZ
-	mrs nes_c,cpsr          ;C
-	str nes_c,nes_v         ;V
 	and nes_a,nes_a,#0xff000000
+	mov nes_nz,nes_a,asr#24 	;NZ
+	mrs nes_v,cpsr				;V
+	orr cycles,cycles,#CYC_C	;Prepare C
 	MEND
 
 	MACRO

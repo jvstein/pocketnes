@@ -317,7 +317,7 @@ ss0	ldr r5,[r2],#4
 	bx lr
 
 savelst	DCD rominfo,8,NES_RAM,0x2800,NES_VRAM,0x3000,agb_pal,96
-	DCD vram_map,64,agb_nt_map,16,mapperstate,48,rommap,16,cpustate,44,ppustate,28
+	DCD vram_map,64,agb_nt_map,16,mapperstate,48,rommap,16,cpustate,44,ppustate,32
 lstend
 
 fixromptrs	;add r2 to some things
@@ -381,12 +381,17 @@ ls3	mov r1,r3
 	beq ls4
 
 ;--------------------------------
+	ldr r2,vrommask		;if vromsize=0
+	tst r2,#0x80000000
+	bne lc3
+
 	mov r0,#-1		;reset all CHR
 	adrl r1,agb_bg_map
 	mov r2,#6		;agb_bg_map,agb_obj_map
 	bl filler_
 	ldr r0,=0x0004080c
 	str r0,bg_recent
+lc3
 ;--------------------------------
 
 

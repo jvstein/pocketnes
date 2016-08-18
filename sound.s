@@ -98,8 +98,8 @@ trianglewav				;Remeber this is 4-bit
 ;----------------------------------------------------------------------------
 timer1interrupt
 ;----------------------------------------------------------------------------
-PCMSTEP		EQU 4
-PCMLIMIT	EQU (127)
+PCMSTEP		EQU 3
+PCMLIMIT	EQU (96)
 
 	mov r1,#REG_BASE
 	strh r1,[r1,#REG_DM2CNT_H]	;DMA stop
@@ -706,7 +706,8 @@ _4015r
 	mov r0,r0,lsr#12
 	ldrb r1,pcmctrl+1
 	and r1,r1,#0x90		;only read channel 5 and pcm IRQ
-	orr r0,r0,r1
+	orr nes_nz,r0,r1
+	orr nes_nz,nes_nz,nes_nz,lsl#24
 
 	mov pc,lr
 ;----------------------------------------------------------------------------

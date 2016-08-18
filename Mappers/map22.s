@@ -36,7 +36,7 @@ writeC000	;addy=B/C/D/Exxx
 	orrne r1,r1,#1
 	tst addy,#2
 
-	adr addy,chr_xx
+	adrl addy,chr_xx
 	and r0,r0,#0xF
 	ldrb r2,[addy,r1]
 

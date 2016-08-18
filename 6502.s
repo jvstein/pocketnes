@@ -100,7 +100,7 @@ _09;   ORA #$xx
 _0A;   ASL
 ;----------------------------------------------------------------------------
 	and nes_a,nes_a,#0xff000000
-	movs nes_a,nes_a,lsl#1
+	adds nes_a,nes_a,nes_a
 	orr nes_nz,nes_a,nes_a,lsr#24
 	mrs nes_c,cpsr
 	fetch 2
@@ -122,12 +122,9 @@ _10x;   BPL
 	orr cycles,cycles,#BRANCH
 _10
 	tst nes_nz,#0x80000000
-	bne nobranch
 	ldrsb r0,[nes_pc],#1
-	add nes_pc,nes_pc,r0
-	fetch 3
-nobranch
-	add nes_pc,nes_pc,#1
+	addeq nes_pc,nes_pc,r0
+	subeq cycles,cycles,#3*CYCLE
 	fetch 2
 ;----------------------------------------------------------------------------
 _11;   ORA ($xx),Y
@@ -220,12 +217,12 @@ _29;   AND #$xx
 ;----------------------------------------------------------------------------
 _2A;   ROL
 ;----------------------------------------------------------------------------
+	and nes_a,nes_a,#0xff000000
 	msr cpsr_f,nes_c	;get C
-	mov r0,nes_a,lsr#24
-	adc r0,r0,r0
-	orr nes_nz,r0,r0,lsl#24
-	mov nes_a,r0,lsl#24
-	mov nes_c,r0,lsl#21	;C
+	orrcs nes_a,nes_a,#0x00800000
+	adds nes_a,nes_a,nes_a
+	mov nes_nz,nes_a,asr#24
+	mrs nes_c,cpsr          ;C
 	fetch 2
 ;----------------------------------------------------------------------------
 _2C;   BIT $xxxx
@@ -251,10 +248,10 @@ _30x;   BMI
 	orr cycles,cycles,#BRANCH
 _30
 	tst nes_nz,#0x80000000
-	beq nobranch
 	ldrsb r0,[nes_pc],#1
-	add nes_pc,nes_pc,r0
-	fetch 3
+	addne nes_pc,nes_pc,r0
+	subne cycles,cycles,#3*CYCLE
+	fetch 2
 ;----------------------------------------------------------------------------
 _31;   AND ($xx),Y
 ;----------------------------------------------------------------------------
@@ -337,9 +334,9 @@ _49;   EOR #$xx
 ;----------------------------------------------------------------------------
 _4A;   LSR
 ;----------------------------------------------------------------------------
-	mov nes_c,nes_a,lsl#5
-	mov nes_nz,nes_a,lsr#25
-	mov nes_a,nes_a,lsr#1
+	movs nes_nz,nes_a,lsr#25
+	mov nes_a,nes_nz,lsl#24
+	mrs nes_c,cpsr          ;C
 	fetch 2
 ;----------------------------------------------------------------------------
 _4C;   JMP $xxxx
@@ -387,10 +384,10 @@ _50x;   BVC
 _50
 	ldr r0,nes_v
 	tst r0,#PSR_V
-	bne nobranch
 	ldrsb r0,[nes_pc],#1
-	add nes_pc,nes_pc,r0
-	fetch 3
+	addeq nes_pc,nes_pc,r0
+	subeq cycles,cycles,#3*CYCLE
+	fetch 2
 ;----------------------------------------------------------------------------
 _51;   EOR ($xx),Y
 ;----------------------------------------------------------------------------
@@ -462,9 +459,8 @@ _66;   ROR $xx
 ;----------------------------------------------------------------------------
 _68;   PLA
 ;----------------------------------------------------------------------------
-	pop8 r0
-	mov nes_a,r0,lsl#24
-	add nes_nz,nes_a,nes_a,lsr#24
+	pop8 nes_nz
+	mov nes_a,nes_nz,lsl#24
 	fetch 4
 ;----------------------------------------------------------------------------
 _69;   ADC #$xx
@@ -477,16 +473,16 @@ _6A;   ROR
 ;----------------------------------------------------------------------------
 	msr cpsr_f,nes_c
 	mov nes_a,nes_a,rrx
-	mov nes_c,nes_a,lsl#6
-	mov nes_nz,nes_a,asr#24
+	movs nes_nz,nes_a,asr#24
+	mrs nes_c,cpsr          ;C
 	fetch 2
 ;----------------------------------------------------------------------------
 _6C;   JMP ($xxxx)
 ;----------------------------------------------------------------------------
 	doABS
 	adr r1,memmap_tbl
-	mov r2,addy,lsr#13
-	ldr r1,[r1,r2,lsl#2]
+	and r2,addy,#0xE000
+	ldr r1,[r1,r2,lsr#11]
 	ldrb nes_pc,[r1,addy]
 	add addy,addy,#1
 	ldrb r0,[r1,addy]
@@ -512,10 +508,10 @@ _70x;   BVS
 _70
 	ldr r0,nes_v
 	tst r0,#PSR_V
-	beq nobranch
 	ldrsb r0,[nes_pc],#1
-	add nes_pc,nes_pc,r0
-	fetch 3
+	addne nes_pc,nes_pc,r0
+	subne cycles,cycles,#3*CYCLE
+	fetch 2
 ;----------------------------------------------------------------------------
 _71;   ADC ($xx),Y
 ;----------------------------------------------------------------------------
@@ -620,10 +616,10 @@ _90x;   BCC
 	orr cycles,cycles,#BRANCH
 _90
 	tst nes_c,#PSR_C
-	bne nobranch
 	ldrsb r0,[nes_pc],#1
-	add nes_pc,nes_pc,r0
-	fetch 3
+	addeq nes_pc,nes_pc,r0
+	subeq cycles,cycles,#3*CYCLE
+	fetch 2
 ;----------------------------------------------------------------------------
 _91;   STA ($xx),Y
 ;----------------------------------------------------------------------------
@@ -663,9 +659,7 @@ _99;   STA $xxxx,Y
 ;----------------------------------------------------------------------------
 _9A;   TXS
 ;----------------------------------------------------------------------------
-	add r0,nes_zpage,#0x100
-	add r0,r0,nes_x
-	str r0,nes_s
+	strb nes_x,nes_s	;don't make it harder the it is, use byte transfer!
 	fetch 2
 ;----------------------------------------------------------------------------
 _9D;   STA $xxxx,X
@@ -751,10 +745,10 @@ _B0x;   BCS
 	orr cycles,cycles,#BRANCH
 _B0
 	tst nes_c,#PSR_C
-	beq nobranch
 	ldrsb r0,[nes_pc],#1
-	add nes_pc,nes_pc,r0
-	fetch 3
+	addne nes_pc,nes_pc,r0
+	subne cycles,cycles,#3*CYCLE
+	fetch 2
 ;----------------------------------------------------------------------------
 _B1;   LDA ($xx),Y
 ;----------------------------------------------------------------------------
@@ -794,9 +788,8 @@ _B9;   LDA $xxxx,Y
 ;----------------------------------------------------------------------------
 _BA;   TSX
 ;----------------------------------------------------------------------------
-	ldr r0,nes_s
-	and nes_x,r0,#0xff
-	add nes_nz,nes_x,nes_x,lsl#24
+	ldrb nes_x,nes_s
+	orr nes_nz,nes_x,nes_x,lsl#24
 	fetch 2
 ;----------------------------------------------------------------------------
 _BC;   LDY $xxxx,X
@@ -890,10 +883,10 @@ _D0x;   BNE
 	orr cycles,cycles,#BRANCH
 _D0
 	tst nes_nz,#0xff
-	beq nobranch
 	ldrsb r0,[nes_pc],#1
-	add nes_pc,nes_pc,r0
-	fetch 3
+	addne nes_pc,nes_pc,r0
+	subne cycles,cycles,#3*CYCLE
+	fetch 2
 ;----------------------------------------------------------------------------
 _D1;   CMP ($xx),Y
 ;----------------------------------------------------------------------------
@@ -1008,10 +1001,10 @@ _F0x;   BEQ
 	orr cycles,cycles,#BRANCH
 _F0
 	tst nes_nz,#0xff
-	bne nobranch
 	ldrsb r0,[nes_pc],#1
-	add nes_pc,nes_pc,r0
-	fetch 3
+	addeq nes_pc,nes_pc,r0
+	subeq cycles,cycles,#3*CYCLE
+	fetch 2
 ;----------------------------------------------------------------------------
 _F1;   SBC ($xx),Y
 ;----------------------------------------------------------------------------
@@ -1230,7 +1223,7 @@ line120_to_240 ;------------------------
 	ldr r1,scanline
 	add r1,r1,#1
 	str r1,scanline
-	cmp r1,#241
+	cmp r1,#240
 	ldrne pc,scanlinehook
 
 	adr addy,line242
@@ -1243,11 +1236,10 @@ NMIDELAY EQU CYCLE*30
 	mov r1,#0x80
 	strb r1,ppustat		;vbl flag
 
-	adr addy,line242NMI
+	adr addy,line241NMI
 	str addy,nexttimeout
 	b default_scanlinehook
-	b default_scanlinehook
-line242NMI ;---------------------------
+line241NMI ;---------------------------
 	ldr r0,frame
 	add r0,r0,#1
 	str r0,frame
@@ -1288,7 +1280,7 @@ line242NMI ;---------------------------
 	adr r1,line242_to_end
 	str r1,nexttimeout
 
-	mov r0,#242
+	mov r0,#241
 	str r0,scanline
 
 	ldr pc,scanlinehook

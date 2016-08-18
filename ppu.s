@@ -555,7 +555,7 @@ stat_R		;(2002)
 	mov r1,#0
 	strb r1,toggle
 
-	ldrb r0,ppustat
+	ldrb nes_nz,ppustat
 	ldr r1,sprite0y		;sprite0 hit?
 	ldr r2,scanline
 	cmp r2,r1
@@ -564,11 +564,12 @@ stat_R		;(2002)
 ;	ldr r2,cyclesperscanline ;the store is in IO.s
 ;	sub r2,r2,cycles
 ;	cmp r2,r1
-	orrhi r0,r0,#0x40
+	orrhi nes_nz,nes_nz,#0x40
 ;nosprh
-	bic r1,r0,#0x80		;vbl flag clear
+	bic r1,nes_nz,#0x80		;vbl flag clear
 	strb r1,ppustat
 
+	orr nes_nz,nes_nz,nes_nz,lsl#24		;to set sign.
 	mov pc,lr
 ;----------------------------------------------------------------------------
 bgscroll_W	;(2005)
@@ -671,7 +672,7 @@ initY			;? jumps here
 	ldr r2,windowtop+8
 	add r0,r0,r2		;y+=windowtop
 	ldr r2,scrollbuff
-	strh r2,[r2,#2]!	;r2+=2, flag 2006 write
+	add r2,r2,#2		;r2+=2, flag 2006 write
 	add r3,r2,#240*4	;r3=end2
 	add r2,r2,r1,lsl#2	;r2=base
 	add r1,r2,r4,lsl#2	;r1=end1
@@ -704,14 +705,14 @@ vmdata_R	;(2007)
 	ldr r1,[r2,r1,lsl#2]
 	bic r0,r0,#0xfc00
 
-	ldrb r1,[r1,r0]
-	ldrb r0,readtemp
-	strb r1,readtemp
+	ldrsb r1,[r1,r0]
+	ldr nes_nz,readtemp
+	str r1,readtemp
 	mov pc,lr
 palread
 	and r0,r0,#0x1f
 	adr r1,nes_palette
-	ldrb r0,[r1,r0]
+	ldrsb nes_nz,[r1,r0]
 	mov pc,lr
 ;----------------------------------------------------------------------------
 vmdata_W	;(2007)
@@ -945,6 +946,7 @@ ppustate
 	DCD 0 ;scrollX
 	DCD 0 ;scrollY
 	DCD 0 ;sprite0y
+	DCD 0 ;readtemp
 
 	DCB 0 ;sprite0x
 	DCB 1 ;vramaddrinc
@@ -953,7 +955,6 @@ ppustate
 	DCB 0 ;ppuctrl0
 	DCB 0 ;ppuctrl0frame	;state of $2000 at frame start
 	DCB 0 ;ppuctrl1
-	DCB 0 ;readtemp
 ;...update load/savestate if you move things around in here
 ;----------------------------------------------------------------------------
 	END

@@ -747,17 +747,17 @@ joy0_R		;4016
 ;----------------------------------------------------------------------------
 	ldr r0,joy0serial
 	mov r1,r0,asr#1
-	and r0,r0,#1
+	and nes_nz,r0,#1
 	str r1,joy0serial
 
 	ldrb r1,cartflags
 	tst r1,#VS
-	orreq r0,r0,#0x40
+	orreq nes_nz,nes_nz,#0x40
 	moveq pc,lr
 
 	ldr r2,joy0state
 	tst r2,#8		;start=coin (VS)
-	orrne r0,r0,#0x40
+	orrne nes_nz,nes_nz,#0x40
 
 	mov pc,lr
 ;----------------------------------------------------------------------------
@@ -765,12 +765,12 @@ joy1_R		;4017
 ;----------------------------------------------------------------------------
 	ldr r0,joy1serial
 	mov r1,r0,asr#1
-	and r0,r0,#1
+	and nes_nz,r0,#1
 	str r1,joy1serial
 
 	ldrb r1,cartflags
 	tst r1,#VS
-	orrne r0,r0,#0xf8	;VS dip switches
+	orrne nes_nz,nes_nz,#0xf8	;VS dip switches
 	mov pc,lr
 ;----------------------------
 	END

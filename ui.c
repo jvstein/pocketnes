@@ -149,11 +149,11 @@ void drawshit() {
 	cls();
     if(pogones)
     {
-	drawtext(19,"                PogoNES v9",0);
+	drawtext(19,"                PogoNES v9.6",0);
     }
     else
     {
-	drawtext(19,"              PocketNES v9",0);
+	drawtext(19,"              PocketNES v9.6",0);
     }
 	strmerge(str,"B autofire: ",autotxt[autoB]);
 	text(0,str);

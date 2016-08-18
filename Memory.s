@@ -23,11 +23,10 @@ empty_R		;read bad address (error)
 		b debug_
 	]
 
-;	mov r0,addy,lsr#8
-;	mov r0,#0	;VS excitebike likes this
+;	mov nes_nz,addy,lsr#8
 ;	mov pc,lr
 void ;- - - - - - - - -empty function
-	mov r0,#0	;VS excitebike likes this
+	mov nes_nz,#0	;VS excitebike likes this
 	mov pc,lr
 ;----------------------------------------------------------------------------
 empty_W		;write bad address (error)
@@ -43,7 +42,7 @@ empty_W		;write bad address (error)
 ram_R	;ram read ($0000-$1FFF)
 ;----------------------------------------------------------------------------
 	bic addy,addy,#0xf800
-	ldrb r0,[nes_zpage,addy]
+	ldrsb nes_nz,[nes_zpage,addy]
 	mov pc,lr
 ;----------------------------------------------------------------------------
 ram_W	;ram write ($0000-$1FFF)
@@ -55,7 +54,7 @@ ram_W	;ram write ($0000-$1FFF)
 sram_R	;sram read ($6000-$7FFF)
 ;----------------------------------------------------------------------------
 	sub r1,addy,#0x5800
-	ldrb r0,[nes_zpage,r1]
+	ldrsb nes_nz,[nes_zpage,r1]
 	mov pc,lr
 ;----------------------------------------------------------------------------
 sram_W	;sram write ($6000-$7FFF)
@@ -76,8 +75,8 @@ sram_W2	;write to real sram ($6000-$7FFF)
 rom_R	;rom read ($8000-$FFFF) (actually $6000-$FFFF now)
 ;----------------------------------------------------------------------------
 	adr r2,memmap_tbl
-	ldr r1,[r2,r1,lsl#2] ;r1=addy>>13
-	ldrb r0,[r1,addy]
+	ldr r1,[r2,r1,lsr#11] ;r1=addy & 0xe000
+	ldrsb nes_nz,[r1,addy]
 	mov pc,lr
 ;----------------------------------------------------------------------------
  AREA rom_code, CODE, READONLY

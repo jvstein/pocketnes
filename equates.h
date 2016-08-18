@@ -156,6 +156,7 @@ vramaddr2 # 4
 scrollX # 4
 scrollY # 4
 sprite0y # 4
+readtemp # 4
 
 sprite0x # 1
 vramaddrinc # 1
@@ -164,7 +165,7 @@ toggle # 1
 ppuctrl0 # 1
 ppuctrl0frame # 1
 ppuctrl1 # 1
-readtemp # 1
+ # 1 ;align
 			;cart.s (wram_globals2)
 mapperdata # 32
 nes_chr_map # 8

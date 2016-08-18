@@ -6,15 +6,15 @@ DEBUG		SETL {FALSE}
 ;BUILD		SETS "DEBUG"/"GBA"	(defined at cmdline)
 ;----------------------------------------------------------------------------
 
-NES_RAM		EQU 0x3004800	;$400 byte align for 6502 stack shit
-NES_SRAM	EQU NES_RAM+0x0800
-CHR_DECODE	EQU NES_RAM+0x2800
-OAM_BUFFER1	EQU NES_RAM+0x2c00
-OAM_BUFFER2	EQU NES_RAM+0x2e00
-OAM_BUFFER3	EQU NES_RAM+0x3000
-YSCALE_EXTRA	EQU NES_RAM+0x3200
-YSCALE_LOOKUP	EQU NES_RAM+0x3250
-;?		EQU NES_RAM+0x3350
+NES_RAM		EQU 0x3004800	;keep $400 byte aligned for 6502 stack shit
+NES_SRAM	EQU NES_RAM+0x0800	;IMPORTANT!! NES_SRAM in GBA.H points here.  keep it current if you fuck with this
+CHR_DECODE	EQU NES_SRAM+0x2000
+OAM_BUFFER1	EQU CHR_DECODE+0x400
+OAM_BUFFER2	EQU OAM_BUFFER1+0x200
+OAM_BUFFER3	EQU OAM_BUFFER2+0x200
+YSCALE_EXTRA	EQU OAM_BUFFER3+0x200
+YSCALE_LOOKUP	EQU YSCALE_EXTRA+0x50
+;?		EQU YSCALE_LOOKUP+0x100
 
 NES_VRAM	EQU 0x2040000-0x3000
 MAPPED_RGB	EQU NES_VRAM-64*2	;mapped NES palette (for VS unisys)
@@ -25,9 +25,9 @@ DMA3BUFF	EQU BG0CNTBUFF-164*2
 SCROLLBUFF1	EQU DMA3BUFF-240*4
 SCROLLBUFF2	EQU SCROLLBUFF1-240*4
 DMA0BUFF	EQU SCROLLBUFF2-164*4
-;PCMSAMPLES	EQU 256
-;PCMWAV		EQU DMA0BUFF-PCMSAMPLES
-END_OF_EXRAM	EQU DMA0BUFF
+PCMWAVSIZE	EQU 128
+PCMWAV		EQU DMA0BUFF-PCMWAVSIZE
+END_OF_EXRAM	EQU PCMWAV
 
 AGB_IRQVECT	EQU 0x3007FFC
 AGB_PALETTE	EQU 0x5000000
@@ -46,24 +46,29 @@ REG_BG0HOFS	EQU 0x10
 REG_BG0VOFS	EQU 0x12
 REG_BG1HOFS	EQU 0x14
 REG_BG1VOFS	EQU 0x16
+REG_WINOUT	EQU 0x4a
 REG_BLDMOD	EQU 0x50
 REG_COLEV	EQU 0x52
 REG_COLY	EQU 0x54
-REG_SG10_L	EQU 0x60
-REG_SG10_H	EQU 0x62
-REG_SG11	EQU 0x64
-REG_SG20	EQU 0x68
-REG_SG21	EQU 0x6C
-REG_SG30_L	EQU 0x70
-REG_SG30_H	EQU 0x72
-REG_SG31	EQU 0x74
-REG_SG40	EQU 0x78
-REG_SG41	EQU 0x7c
-REG_SGCNT0_L	EQU 0x80
-REG_SGCNT1	EQU 0x84
-REG_SGCNT0_H	EQU 0x82
+REG_SG1CNT_L	EQU 0x60
+REG_SG1CNT_H	EQU 0x62
+REG_SG1CNT_X	EQU 0x64
+REG_SG2CNT_L	EQU 0x68
+REG_SG2CNT_H	EQU 0x6C
+REG_SG3CNT_L	EQU 0x70
+REG_SG3CNT_H	EQU 0x72
+REG_SG3CNT_X	EQU 0x74
+REG_SG4CNT_L	EQU 0x78
+REG_SG4CNT_H	EQU 0x7c
+REG_SGCNT_L	EQU 0x80
+REG_SGCNT_H	EQU 0x82
+REG_SGCNT_X	EQU 0x84
 REG_SGBIAS	EQU 0x88
 REG_SGWR0_L	EQU 0x90
+REG_FIFO_A_L	EQU 0xA0
+REG_FIFO_A_H	EQU 0xA2
+REG_FIFO_B_L	EQU 0xA4
+REG_FIFO_B_H	EQU 0xA6
 REG_DM0SAD	EQU 0xB0
 REG_DM0DAD	EQU 0xB4
 REG_DM0CNT_L	EQU 0xB8
@@ -80,7 +85,6 @@ REG_DM3SAD	EQU 0xD4
 REG_DM3DAD	EQU 0xD8
 REG_DM3CNT_L	EQU 0xDC
 REG_DM3CNT_H	EQU 0xDE
-REG_SGFIFOB_L	EQU 0xA4
 REG_TM0D	EQU 0x100
 REG_TM0CNT	EQU 0x102
 REG_IE		EQU 0x200
@@ -90,6 +94,9 @@ REG_P1CNT	EQU 0x132
 REG_WSCNT	EQU 0x4000204
 
 REG_SIOMULTI0	EQU 0x20 ;+100
+REG_SIOMULTI1	EQU 0x22 ;+100
+REG_SIOMULTI2	EQU 0x24 ;+100
+REG_SIOMULTI3	EQU 0x26 ;+100
 REG_SIOCNT	EQU 0x28 ;+100
 REG_SIOMLT_SEND	EQU 0x2a ;+100
 REG_RCNT	EQU 0x34 ;+100
@@ -141,6 +148,7 @@ cyclesperscanline # 4
 lastscanline # 4
 			;ppu.s (wram_globals1)
 AGBjoypad # 4
+NESjoypad # 4
 adjustblend # 4
 windowtop # 16
 vramaddr # 4
@@ -149,6 +157,7 @@ scrollX # 4
 scrollY # 4
 sprite0y # 4
 
+sprite0x # 1
 vramaddrinc # 1
 ppustat # 1
 toggle # 1
@@ -156,26 +165,26 @@ ppuctrl0 # 1
 ppuctrl0frame # 1
 ppuctrl1 # 1
 readtemp # 1
- # 1 ;align
 			;cart.s (wram_globals2)
 mapperdata # 32
 nes_chr_map # 8
 old_chr_map # 8
+new_chr_map # 8
 agb_bg_map # 16
 agb_obj_map # 8
 bg_recent # 4
 
 rombase # 4
 romnumber # 4
-hackflags # 4
+emuflags # 4
 BGmirror # 4
 
 rommask # 4
 vrombase # 4
 vrommask # 4
-sram_slot # 4
 
 cartflags # 1
+
  # 3 ;align
 ;----------------------------------------------------------------------------
 IRQ_VECTOR EQU 0xfffe ; IRQ/BRK interrupt vector address
@@ -187,16 +196,22 @@ SRAM		EQU 0x02 ;save SRAM
 TRAINER		EQU 0x04 ;trainer present
 SCREEN4		EQU 0x08 ;4way screen layout
 VS		EQU 0x10 ;VS unisystem
-;-----------------------------------------------------------hackflags
+;-----------------------------------------------------------emuflags
 USEPPUHACK	EQU 1	;use $2002 hack
 NOCPUHACK	EQU 2	;don't use JMP hack
 PALTIMING	EQU 4	;0=NTSC 1=PAL
-SPRITEFOLLOW	EQU 16	;(with bits 8-23 of hackflags)
-MEMFOLLOW	EQU 32	;...
-NOSCALING	EQU 64	;also defined in GBA.H
-SCALESPRITES	EQU 128	;also defined in GBA.H
+;?		EQU 16
+FOLLOWMEM       EQU 32  ;0=follow sprite, 1=follow mem
 
-;bits 24-31=SRAM slot
+			;bits 8-5=scale type
+
+UNSCALED_NOAUTO	EQU 0	;display types
+UNSCALED_AUTO	EQU 1
+SCALED		EQU 2
+SCALED_SPRITES	EQU 3
+
+		;bits 16-31=sprite follow val
+
 ;----------------------------------------------------------------------------
 CYCLE		EQU 16 ;one cycle (341*CYCLE cycles per scanline)
 

@@ -1,4 +1,5 @@
-	AREA wram_code3, CODE, READWRITE
+;	AREA wram_code3, CODE, READWRITE
+	AREA rom_code, CODE, READONLY
 
 	INCLUDE equates.h
 	INCLUDE memory.h
@@ -18,9 +19,6 @@ mapper17init
 
 	adr r1,write0
 	str r1,writemem_tbl+8
-
-	mov r0,#0
-	strb r0,enable
 
 	adr r0,hook
 	str r0,scanlinehook

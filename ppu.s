@@ -16,6 +16,7 @@
 	EXPORT VRAM_chr
 	EXPORT debug_
 	EXPORT AGBinput
+	EXPORT NESinput
 	EXPORT map_palette
 	EXPORT newframe
 	EXPORT agb_pal
@@ -31,36 +32,36 @@
 nes_rgb
 	INCBIN nespal.bin
 vs_palmaps
-;castlevania/golf/machrider
-	DCB 0x0f,0x27,0x18,0x3f,0x3f,0x25,0x3f,0x34,0x16,0x13,0x3f,0x3f,0x20,0x23,0x3f,0x0b
-	DCB 0x3f,0x3f,0x06,0x3f,0x1b,0x3f,0x3f,0x22,0x3f,0x24,0x3f,0x3f,0x32,0x3f,0x3f,0x03
-	DCB 0x3f,0x37,0x26,0x33,0x11,0x3f,0x10,0x3f,0x14,0x3f,0x00,0x09,0x12,0x0f,0x3f,0x30
-	DCB 0x3f,0x3f,0x2a,0x17,0x0c,0x01,0x15,0x19,0x3f,0x3f,0x07,0x37,0x3f,0x05,0x3f,0x3f
-;mario
-	DCB 0x18,0x3f,0x1c,0x3f,0x3f,0x3f,0x0b,0x17,0x10,0x3f,0x14,0x3f,0x36,0x37,0x1a,0x3f
-	DCB 0x25,0x3f,0x12,0x3f,0x0f,0x3f,0x3f,0x3f,0x3f,0x3f,0x22,0x19,0x3f,0x3f,0x3a,0x21
-	DCB 0x3f,0x3f,0x07,0x3f,0x3f,0x3f,0x00,0x15,0x0c,0x3f,0x3f,0x3f,0x3f,0x3f,0x3f,0x3f
-	DCB 0x3f,0x3f,0x07,0x16,0x3f,0x3f,0x30,0x3c,0x3f,0x27,0x3f,0x3f,0x29,0x3f,0x1b,0x09
-;iceclimber
-	DCB 0x18,0x3f,0x1c,0x3f,0x3f,0x3f,0x01,0x17,0x10,0x3f,0x2a,0x3f,0x36,0x37,0x1a,0x39
-	DCB 0x25,0x3f,0x12,0x3f,0x0f,0x3f,0x3f,0x26,0x3f,0x3f,0x22,0x19,0x3f,0x0f,0x3a,0x21
-	DCB 0x3f,0x0a,0x07,0x06,0x13,0x3f,0x00,0x15,0x0c,0x3f,0x11,0x3f,0x3f,0x38,0x3f,0x3f
-	DCB 0x3f,0x3f,0x07,0x16,0x3f,0x3f,0x30,0x3c,0x0f,0x27,0x3f,0x31,0x29,0x3f,0x11,0x09
-;gradius/pinball
-	DCB 0x35,0x3f,0x16,0x3f,0x1c,0x3f,0x3f,0x15,0x3f,0x3f,0x27,0x05,0x04,0x3f,0x3f,0x30
-	DCB 0x21,0x3f,0x3f,0x3f,0x3f,0x3f,0x36,0x12,0x3f,0x2b,0x3f,0x3f,0x3f,0x3f,0x3f,0x3f
-	DCB 0x3f,0x31,0x3f,0x2a,0x2c,0x0c,0x3f,0x3f,0x3f,0x07,0x34,0x06,0x3f,0x25,0x26,0x0f
-	DCB 0x3f,0x19,0x10,0x3f,0x3f,0x3f,0x3f,0x17,0x3f,0x11,0x3f,0x3f,0x3f,0x3f,0x18,0x3f
-;goonies/drmario/soccer
-	DCB 0x0f,0x3f,0x3f,0x10,0x3f,0x30,0x31,0x3f,0x01,0x0f,0x36,0x3f,0x3f,0x3f,0x3f,0x3c
-	DCB 0x3f,0x3f,0x3f,0x12,0x19,0x3f,0x17,0x3f,0x00,0x3f,0x3f,0x02,0x16,0x3f,0x3f,0x3f
-	DCB 0x3f,0x3f,0x3f,0x37,0x3f,0x27,0x26,0x20,0x3f,0x04,0x22,0x3f,0x11,0x3f,0x3f,0x3f
-	DCB 0x2c,0x3f,0x3f,0x3f,0x07,0x2a,0x3f,0x3f,0x3f,0x3f,0x3f,0x38,0x13,0x3f,0x3f,0x0c
-;excitebike
-	DCB 0x3f,0x3f,0x3f,0x3f,0x1a,0x30,0x3c,0x09,0x0f,0x0f,0x3f,0x0f,0x3f,0x3f,0x3f,0x30
-	DCB 0x32,0x1c,0x3f,0x12,0x3f,0x18,0x17,0x3f,0x0c,0x3f,0x3f,0x02,0x16,0x3f,0x3f,0x3f
+;freedomforce/gradius/hoogansalley/pinball/platoon
+	DCB 0x35,0x3f,0x16,0x22,0x1c,0x09,0x30,0x15,0x30,0x00,0x27,0x05,0x04,0x28,0x08,0x30
+	DCB 0x21,0x3f,0x3f,0x3f,0x3c,0x32,0x36,0x12,0x3f,0x2b,0x3f,0x3f,0x3f,0x3f,0x24,0x01
+	DCB 0x3f,0x31,0x3f,0x2a,0x2c,0x0c,0x3f,0x14,0x3f,0x07,0x34,0x06,0x3f,0x02,0x26,0x0f
+	DCB 0x3f,0x19,0x10,0x0a,0x3f,0x3f,0x37,0x17,0x3f,0x11,0x1a,0x3f,0x3f,0x25,0x18,0x3f
+;castlevania/golf/machrider/slalom
+	DCB 0x0f,0x27,0x18,0x3f,0x3f,0x25,0x3f,0x34,0x16,0x13,0x3f,0x34,0x20,0x23,0x3f,0x0b
+	DCB 0x3f,0x23,0x06,0x3f,0x1b,0x27,0x3f,0x22,0x3f,0x24,0x3f,0x3f,0x32,0x08,0x3f,0x03
+	DCB 0x3f,0x37,0x26,0x33,0x11,0x3f,0x10,0x22,0x14,0x3f,0x00,0x09,0x12,0x0f,0x3f,0x30
+	DCB 0x3f,0x3f,0x2a,0x17,0x0c,0x01,0x15,0x19,0x3f,0x2c,0x07,0x37,0x3f,0x05,0x3f,0x3f
+;excitebike/excitebike-alt (probably not complete yet)
+	DCB 0x3f,0x3f,0x1c,0x3f,0x1a,0x30,0x01,0x07,0x02,0x3f,0x3f,0x30,0x3f,0x3f,0x3f,0x30
+	DCB 0x32,0x1c,0x11,0x12,0x3f,0x18,0x17,0x26,0x0c,0x3f,0x3f,0x02,0x16,0x3f,0x3f,0x21
 	DCB 0x3f,0x3f,0x0f,0x37,0x3f,0x28,0x27,0x3f,0x29,0x3f,0x21,0x3f,0x11,0x3f,0x0f,0x3f
-	DCB 0x31,0x3f,0x3f,0x3f,0x0f,0x2a,0x28,0x3f,0x3f,0x3f,0x3f,0x3f,0x13,0x3f,0x3f,0x3f
+	DCB 0x31,0x3f,0x3f,0x06,0x0f,0x2a,0x30,0x3f,0x3f,0x28,0x3f,0x3f,0x13,0x3f,0x3f,0x3f
+;battlecity/clucluland/iceclimber/smb/starluster/topgun?
+	DCB 0x18,0x3f,0x1c,0x3f,0x3f,0x3f,0x01,0x17,0x10,0x3f,0x2a,0x3f,0x36,0x37,0x1a,0x39
+	DCB 0x25,0x3f,0x12,0x3f,0x0f,0x3f,0x3f,0x26,0x3f,0x1b,0x22,0x19,0x04,0x0f,0x3a,0x21
+	DCB 0x3f,0x0a,0x07,0x06,0x13,0x3f,0x00,0x15,0x0c,0x3f,0x11,0x3f,0x3f,0x38,0x3f,0x3f
+	DCB 0x3f,0x30,0x07,0x16,0x3f,0x3b,0x30,0x3c,0x0f,0x27,0x3f,0x31,0x29,0x3f,0x11,0x09
+;drmario/goonies/soccer
+	DCB 0x0f,0x3f,0x3f,0x10,0x1a,0x30,0x31,0x3f,0x01,0x0f,0x36,0x3f,0x15,0x3f,0x3f,0x3c
+	DCB 0x3f,0x3f,0x3f,0x12,0x19,0x18,0x17,0x3f,0x00,0x3f,0x3f,0x02,0x16,0x3f,0x3f,0x3f
+	DCB 0x3f,0x3f,0x3f,0x37,0x3f,0x27,0x26,0x20,0x3f,0x04,0x22,0x3f,0x11,0x3f,0x3f,0x3f
+	DCB 0x2c,0x3f,0x3f,0x3f,0x07,0x2a,0x28,0x3f,0x0a,0x3f,0x32,0x38,0x13,0x3f,0x3f,0x0c
+;smb
+;	DCB 0x00,0x00,0x00,0x00,0x00,0x00,0x0b,0x00,0x00,0x00,0x14,0x00,0x00,0x00,0x00,0x00
+;	DCB 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+;	DCB 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+;	DCB 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x1b,0x00
 ;----------------------------------------------------------------------------
 map_palette	;(for VS unisys)	r0-r2,r4-r7 modified
 ;----------------------------------------------------------------------------
@@ -103,17 +104,29 @@ mp1	ldrb r0,[r1],#1
 	bne mp1
 	mov pc,lr
 
-vslist	DCD 0x80008281,vs_palmaps+64*3 ;pinball			RP2C04-0001
-	DCD 0xf422f492,vs_palmaps+64*3 ;gradius
-	DCD 0x800080ce,vs_palmaps+64*0 ;(lady)golf		RP2C04-0002
-	DCD 0x80008053,vs_palmaps+64*0 ;mach rider
-	DCD 0xc008c062,vs_palmaps+64*0 ;castlevania
-	DCD 0x85af863f,vs_palmaps+64*5 ;excitebike		RP2C04-0003
-	DCD 0x800080ba,vs_palmaps+64*4 ;soccer
-	DCD 0xf007f0a5,vs_palmaps+64*4 ;goonies
-	DCD 0xff008005,vs_palmaps+64*4 ;dr mario
-	DCD 0x8000810a,vs_palmaps+64*1 ;super mario bros	RP2C04-0004
-	DCD 0xb578b5de,vs_palmaps+64*2 ;ice climber
+vslist	DCD 0xfff3f318,vs_palmaps+64*0 ;Freedom Force		RP2C04-0001
+	DCD 0xf422f492,vs_palmaps+64*0 ;Gradius			RP2C04-0001
+	DCD 0x8000809c,vs_palmaps+64*0 ;Hoogans Alley		RP2C04-0001
+	DCD 0x80008281,vs_palmaps+64*0 ;Pinball			RP2C04-0001
+	DCD 0xfff3fd92,vs_palmaps+64*0 ;Platoon			RP2C04-0001
+	DCD 0x800080ce,vs_palmaps+64*1 ;(lady)Golf		RP2C04-0002
+	DCD 0x80008053,vs_palmaps+64*1 ;Mach Rider		RP2C04-0002
+	DCD 0xc008c062,vs_palmaps+64*1 ;Castlevania		RP2C04-0002
+	DCD 0x8050812f,vs_palmaps+64*1 ;Slalom			RP2C04-0002
+	DCD 0x85af863f,vs_palmaps+64*2 ;Excitebike		RP2C04-0003
+	DCD 0x859a862a,vs_palmaps+64*2 ;Excitebike(a1)		RP2C04-0003
+	DCD 0x8000810a,vs_palmaps+64*3 ;Super Mario Bros	RP2C04-0004
+	DCD 0xb578b5de,vs_palmaps+64*3 ;Ice Climber		RP2C04-0004
+	DCD 0xc298c325,vs_palmaps+64*3 ;Clu Clu Land		RP2C04-0004
+	DCD 0x804c8336,vs_palmaps+64*3 ;Star Luster		RP2C04-0004
+	DCD 0xc070d300,vs_palmaps+64*3 ;Battle City		RP2C04-0004
+	DCD 0xc298c325,vs_palmaps+64*3 ;Top Gun			RP2C04-0004?
+	DCD 0x800080ba,vs_palmaps+64*4 ;Soccer
+	DCD 0xf007f0a5,vs_palmaps+64*4 ;Goonies
+	DCD 0xff008005,vs_palmaps+64*4 ;Dr. Mario
+;	DCD 0xf1b8f375,vs_palmaps+64*? ;Super Sky Kid		doesn't need palette
+;	DCD 0xffdac0c4,vs_palmaps+64*? ;TKO Boxing		doesn't start
+;	DCD 0xf958f88f,vs_palmaps+64*3 ;Super Xevious		doesn't start
 	DCD 0
 ;----------------------------------------------------------------------------
 ppu_init	;(called from main.c) only need to call once
@@ -151,6 +164,9 @@ ppi0	mov r0,#0
 	mov r0,#0x0008
 	strh r0,[r1,#REG_DISPSTAT]	;vblank en
 
+	mov r0,#4
+	strh r0,[r1,#REG_COLY]	;darkness setting for faded screens (bigger number=darker)
+
 	add r0,r1,#REG_BG0HOFS		;DMA0 always goes here
 	str r0,[r1,#REG_DM0DAD]
 	mov r0,#1			;1 word transfer
@@ -170,12 +186,7 @@ ppi0	mov r0,#0
 	mov r0,#1
 	strh r0,[r2,#8]		;master irq enable
 
-;	ldr r0,emu
-;	str r0,no_emu
-;no_emu	mov pc,addy
-;emu	nop
-;	;..
-	mov pc,addy
+	bx addy
 ;----------------------------------------------------------------------------
 ppureset_	;called with CPU reset
 ;----------------------------------------------------------------------------
@@ -198,41 +209,62 @@ irqhandler	;r0-r3,r12 are safe to use
 	mov r2,#REG_BASE
 	ldr r1,[r2,#REG_IE]!
 	and r1,r1,r1,lsr#16	;r1=IE&IF
-	;---
-	ands r0,r1,#0x10
-	bne timer1interrupt
-	ands r0,r1,#0x80
-	bne serialinterrupt
-	ands r0,r1,#0x01
-	bne vblankinterrupt
-	;----
-	strh r1,[r2,#2]		;IF clear
+
+		;---these CAN'T be interrupted
+		ands r0,r1,#0x80
+		strneh r0,[r2,#2]		;IF clear
+		bne serialinterrupt
+		;---
+		adr r12,irq0
+
+		;---these CAN be interrupted
+		ands r0,r1,#0x01
+		ldrne r12,=vblankinterrupt
+		bne jmpintr
+		ands r0,r1,#0x10
+		ldrne r12,=timer1interrupt
+		;----
+		moveq r0,r1		;if unknown interrupt occured clear it.
+jmpintr
+	strh r0,[r2,#2]		;IF clear
+
+	mrs r3,spsr
+	stmfd sp!,{r3,lr}
+	mrs r3,cpsr
+	bic r3,r3,#0xdf
+	orr r3,r3,#0x1f			;--> Enable IRQ & FIQ. Set CPU mode to System.
+	msr cpsr_cf,r3
+	stmfd sp!,{lr}
+	adr lr,irq0
+
+	mov pc,r12
+
+
+irq0
+	ldmfd sp!,{lr}
+	mrs r3,cpsr
+	bic r3,r3,#0xdf
+	orr r3,r3,#0x92        		;--> Disable IRQ. Enable FIQ. Set CPU mode to IRQ
+	msr cpsr_cf,r3
+	ldmfd sp!,{r0,lr}
+	msr spsr_cf,r0
 	bx lr
 ;----------------------------------------------------------------------------
 twitch DCD 0
-returnhere DCD 0
 vblankinterrupt;
 ;----------------------------------------------------------------------------
-	strh r0,[r2,#2]		;IF clear
-	strb r0,agb_vbl
-	add r1,sp,#20
-	adr r0,exitirq+4
-	swp r0,r0,[r1]
-	sub r0,r0,#4
-	str r0,returnhere
-	bx lr		;exit immediately so it doesn't fuck up sound interrupt timing
-exitirq ;- - - - - - - - - - - -
-	stmfd sp!,{r0-r7,globalptr,lr}
-	mrs lr,cpsr
+	strb r1,agb_vbl
+
+	stmfd sp!,{r4-r7,globalptr,lr}
 
 	ldr globalptr,=|wram_globals0$$Base|
 
 	ldr r2,=DMA0BUFF	;setup DMA buffer for scrolling:
 	add r3,r2,#160*4
 	ldr r1,dmascrollbuff
-	ldrb r0,hackflags
-	tst r0,#NOSCALING
-	beq vbl0
+        ldrb r0,emuflags+1
+	cmp r0,#SCALED
+	bhs vbl0
 
 	ldr r0,windowtop+12
 	add r1,r1,r0,lsl#2		;(unscaled)
@@ -245,9 +277,9 @@ vbl0					;(scaled)
 	mov r4,#YSTART*65536
 	add r1,r1,#2
 
-	ldr r5,twitch
-	eors r5,r5,#1
-	str r5,twitch
+	ldr r0,twitch
+	eors r0,r0,#1
+	str r0,twitch
 		ldrh r5,[r1],#YSTART*4-2 ;adjust vertical scroll to avoid screen wobblies
 	ldreq r0,[r1],#4
 	addeq r0,r0,r4
@@ -255,6 +287,7 @@ vbl0					;(scaled)
 		ldr r0,adjustblend
 		add r0,r0,r5
 		ands r0,r0,#3
+		str r0,totalblend
 		beq vbl2
 		cmp r0,#1
 		beq vbl3
@@ -276,11 +309,11 @@ vbl4	add r1,r1,#4
 	bmi vbl1
 vbl5
 
-	ldrb r0,hackflags		;get DMA1,3 source..
-	tst r0,#NOSCALING
-	ldreq r3,=DMA1BUFF
-	ldreq r4,=DMA3BUFF
-	beq vbl7
+        ldrb r0,emuflags+1             ;get DMA1,3 source..
+	cmp r0,#SCALED
+	ldrhs r3,=DMA1BUFF
+	ldrhs r4,=DMA3BUFF
+	bhs vbl7
 	ldr r0,windowtop+12
 	ldr r3,=DISPCNTBUFF
 	ldr r4,=BG0CNTBUFF
@@ -296,10 +329,9 @@ vbl7
 	str r0,[r1,#REG_DM3SAD]
 	mov r0,#AGB_OAM
 	str r0,[r1,#REG_DM3DAD]
-	mov r0,#128
-	strh r0,[r1,#REG_DM3CNT_L]		;128 words (512 bytes)
-	mov r0,#0x8400				;noIRQ hblank 32bit repeat incsrc fixeddst
-	strh r0,[r1,#REG_DM3CNT_H]		;DMA go
+	mov r0,#0x84000000			;noIRQ hblank 32bit repeat incsrc fixeddst
+	orr r0,r0,#0x80				;128 words (512 bytes)
+	str r0,[r1,#REG_DM3CNT_L]		;DMA go
 
 	ldr r0,=DMA0BUFF		;setup HBLANK DMA for display scroll:
 	ldr r2,[r0],#4
@@ -318,24 +350,22 @@ vbl7
 	ldr r2,[r4],#2
 	strh r2,[r1,#REG_BG0CNT]
 	str r4,[r1,#REG_DM3SAD]
-	mov r0,#1				;1 word transfer
-	strh r0,[r1,#REG_DM3CNT_L]
-	ldr r0,=0xA240				;noIRQ hblank 16bit repeat incsrc fixeddst
-	strh r0,[r1,#REG_DM3CNT_H]		;DMA go
+	ldr r0,=0xA2400001			;noIRQ hblank 16bit repeat incsrc fixeddst, 1 word transfer
+	str r0,[r1,#REG_DM3CNT_L]		;DMA go
 
-	msr cpsr_f,lr
-	ldmfd sp!,{r0-r7,globalptr,lr}
-	ldr pc,returnhere
+	ldmfd sp!,{r4-r7,globalptr,pc}
+
+totalblend	DCD 0
 ;----------------------------------------------------------------------------
 newframe	;called at line 0	(r0-r9 safe to use)
 ;----------------------------------------------------------------------------
 	str lr,[sp,#-4]!
 
 	bl updateOBJCHR
-	ldr r0,nes_chr_map
-	ldr r1,nes_chr_map+4
-	str r0,old_chr_map
-	str r1,old_chr_map+4
+;	ldr r0,nes_chr_map		; moved to 6502.s
+;	ldr r1,nes_chr_map+4
+;	str r0,old_chr_map
+;	str r1,old_chr_map+4
 ;-----------------------
 	ldr r0,ctrl1old
 	ldr r1,ctrl1line
@@ -363,44 +393,47 @@ newframe	;called at line 0	(r0-r9 safe to use)
 	str r0,tmpoambuffer
 	str r1,dmaoambuffer
 
-	ldr r0,windowtop
-	ldr r1,windowtop+4
-	ldr r2,windowtop+8
-	str r0,windowtop+4
-	str r1,windowtop+8
-	str r2,windowtop+12
+	adr r0,windowtop	;load wtop, store in wtop+4.......load wtop+8, store in wtop+12
+	ldmia r0,{r1-r3}	;load with post increment
+	stmib r0,{r1-r3}	;store with pre increment
 
 	ldr r0,scrollY
 	mov r1,#0
 	bl initY
 
-	ldrb r0,hackflags		;refresh DMA1,DMA2 buffers
-	tst r0,#NOSCALING			;not needed for unscaled mode..
-	bne nf7					;(DMA'd directly from dispcntbuff/bg0cntbuff)
+        ldrb r0,emuflags+1             ;refresh DMA1,DMA2 buffers
+	cmp r0,#SCALED				;not needed for unscaled mode..
+	bmi nf7					;(DMA'd directly from dispcntbuff/bg0cntbuff)
 
+	ldr r1,=DISPCNTBUFF+YSTART*2		;(scaled)
 	ldr r2,=DMA1BUFF
-	add r3,r2,#160*2
-nf1	ldr r1,=DISPCNTBUFF+YSTART*2		;(scaled)
-nf0	ldrh r0,[r1],#2
-	strh r0,[r2],#2
-		ldrh r0,[r1],#2
-		strh r0,[r2],#2
-	ldrh r0,[r1],#4
-	strh r0,[r2],#2
-	cmp r2,r3
-	bmi nf0
+	bl nf0
 
 	ldr r1,=BG0CNTBUFF+YSTART*2
 	ldr r2,=DMA3BUFF
-	add r3,r2,#160*2
-nf2	ldrh r0,[r1],#2
+	adr lr,nf7
+
+nf0	add r3,r2,#160*2
+		ldr r0,twitch
+		tst r0,#1
+	ldrneh r0,[r1],#2
+	strneh r0,[r2],#2
+		ldr r0,totalblend
+		ands r0,r0,#3
+		beq nf21
+		cmp r0,#1
+		beq nf22
+		cmp r0,#2
+		addeq r1,r1,#2
+nf20	ldrh r0,[r1],#2
 	strh r0,[r2],#2
-		ldrh r0,[r1],#2
+nf21		ldrh r0,[r1],#2
 		strh r0,[r2],#2
-	ldrh r0,[r1],#4
+nf22	ldrh r0,[r1],#4
 	strh r0,[r2],#2
 	cmp r2,r3
-	bmi nf2
+	bmi nf20
+	mov pc,lr
 nf7
 	mov r8,#AGB_PALETTE		;palette transfer
 	adrl addy,agb_pal
@@ -472,7 +505,7 @@ ctrl0_W		;(2000)
 	strb r1,vramaddrinc
 
 	mov r1,r0,lsr#1			;Y scroll
-	and r1,r1,#1
+	and r1,r1,#1			; should be 1
 	strb r1,scrollY+1
 
 	and r0,r0,#1			;X scroll
@@ -486,7 +519,7 @@ ctrl1_W		;(2001)
 ;----------------------------------------------------------------------------
 	strb r0,ppuctrl1
 
-	mov r1,#0x0440		;1d sprites, BG2 enable
+	mov r1,#0x0440		;1d sprites, BG2 enable. DISPCNTBUFF startvalue. 0x0440
 	tst r0,#0x08		;bg en?
 	orrne r1,r1,#0x0100
 	tst r0,#0x10		;obj en?
@@ -515,7 +548,7 @@ ctrl1line	DCD 0 ;when?
 ;----------------------------------------------------------------------------
 stat_R		;(2002)
 ;----------------------------------------------------------------------------
-	ldrb r2,hackflags	;probably in a polling loop
+        ldrb r2,emuflags       ;probably in a polling loop
 	tst r2,#USEPPUHACK
 	movne cycles,#0		;let's help out
 
@@ -526,7 +559,13 @@ stat_R		;(2002)
 	ldr r1,sprite0y		;sprite0 hit?
 	ldr r2,scanline
 	cmp r2,r1
+;	ble nosprh
+;	ldrb r1,sprite0x	;for extra high resolution sprite0 hit
+;	ldr r2,cyclesperscanline ;the store is in IO.s
+;	sub r2,r2,cycles
+;	cmp r2,r1
 	orrhi r0,r0,#0x40
+;nosprh
 	bic r1,r0,#0x80		;vbl flag clear
 	strb r1,ppustat
 
@@ -691,37 +730,31 @@ vmdata_W	;(2007)
 ;----------------------------------------------------------------------------
 VRAM_chr;	0000-1fff
 ;----------------------------------------------------------------------------
-	ldr r1,=NES_VRAM
-	strb r0,[r1,addy]
-	sub addy,addy,#15
-	tst addy,#0x0f		;update AGB CHR when last byte of tile is written
-	movne pc,lr
+	ldr r2,=NES_VRAM
+	strb r0,[r2,addy]
 
-	stmfd sp!,{r3,r4,r5,lr}
+	stmfd sp!,{r3,r4,lr}
 
-objptr	RN r3 ;obj chr dst
-nesptr	RN r4 ;chr src
-bgptr	RN r5 ;bg chr dst
+	bic addy,addy,#8
+	ldrb r0,[r2,addy]!	;read 1st plane
+	ldrb r1,[r2,#8]		;read 2nd plane
 
-	add nesptr,r1,addy
-	ldr bgptr,=AGB_VRAM
-	add bgptr,bgptr,addy,lsl#1
-	add objptr,bgptr,#0x10000
-	tst bgptr,#0x2000
-	addne bgptr,bgptr,#0x2000
+	ldr r3,=AGB_VRAM		;r3=AGB BG tileset
+	and r2,addy,#7		;r2=tile line#
+	add r3,r3,addy,lsl#1
+	add r3,r3,r2,lsl#1
+	add r4,r3,#0x10000
+	tst r3,#0x2000		;1st or 2nd page?
+	addne r3,r3,#0x2000	;0000/4000 for BG, 10000/12000 for OBJ
 
 	adr r2,chr_decode
-chr0	ldrb r0,[nesptr],#1
-	ldrb r1,[nesptr,#7]
 	ldr r0,[r2,r0,lsl#2]
 	ldr r1,[r2,r1,lsl#2]
 	orr r0,r0,r1,lsl#1
-	str r0,[bgptr],#4
-	str r0,[objptr],#4
-	tst bgptr,#0x1f
-	bne chr0
+	str r0,[r3]
+	str r0,[r4]
 
-	ldmfd sp!,{r3,r4,r5,pc}
+	ldmfd sp!,{r3,r4,pc}
 ;----------------------------------------------------------------------------
 VRAM_name0	;(2000-23ff)
 ;----------------------------------------------------------------------------
@@ -827,7 +860,7 @@ VRAM_pal	;write to VRAM palette area ($3F00-$3F1F)
 	strh r0,[r2,addy]	;store in agb palette
 	mov pc,lr
 ;----------------------------------------------------------------------------
-debug_		;debug output, r0=val, r1=line
+debug_		;debug output, r0=val, r1=line, r2=used.
 ;----------------------------------------------------------------------------
  [ DEBUG
 	ldr r2,=DEBUGSCREEN
@@ -843,7 +876,7 @@ db0
 	tst r2,#15
 	bne db0
  ]
-	mov pc,lr
+	bx lr
 ;----------------------------------------------------------------------------
 
 vram_write_tbl	;for vmdata_W, r0=data, addy=vram addr
@@ -877,10 +910,10 @@ nes_nt0 DCD NES_VRAM+0x2000 ;$2000
 nes_nt1 DCD NES_VRAM+0x2000 ;$2400
 nes_nt2 DCD NES_VRAM+0x2400 ;$2800
 nes_nt3 DCD NES_VRAM+0x2400 ;$2c00
-	DCD NES_VRAM+0x2c00 ;$3xxx=?
-	DCD NES_VRAM+0x2c00
-	DCD NES_VRAM+0x2c00
-	DCD NES_VRAM+0x2c00
+	DCD NES_VRAM+0x2C00 ;$3xxx=?
+	DCD NES_VRAM+0x2C00
+	DCD NES_VRAM+0x2C00
+	DCD NES_VRAM+0x2C00
 
 agb_nt_map	;set thru mirror*
 agb_nt0 DCD 0
@@ -902,7 +935,8 @@ dmaoambuffer DCD OAM_BUFFER2	;triple buffered hell!!!
 	AREA wram_globals1, CODE, READWRITE
 
 AGBinput		;this label here for main.c to use
-	DCD 0 ;AGBjoypad
+	DCD 0 ;AGBjoypad (why is this in ppu.s again?  um.. i forget)
+NESinput	DCD 0 ;NESjoypad (this is what NES sees)
 	DCD 2 ;adjustblend
 wtop	DCD 0,0,0,0 ;windowtop  (this label too)   L/R scrolling in unscaled mode
 ppustate
@@ -912,6 +946,7 @@ ppustate
 	DCD 0 ;scrollY
 	DCD 0 ;sprite0y
 
+	DCB 0 ;sprite0x
 	DCB 1 ;vramaddrinc
 	DCB 0 ;ppustat
 	DCB 0 ;toggle

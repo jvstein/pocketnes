@@ -11,13 +11,19 @@ typedef volatile unsigned long vu32;
 
 typedef void (*fptr)(void);
 
-#define NOSCALING 64	//hackflags (from equates.h)
-#define SCALESPRITES 128
+typedef struct {
+	char name[32];
+	u32 filesize;
+	u32 flags;
+	u32 spritefollow;
+	u32 reserved;
+} romheader;	
 
 #define MEM_PALETTE (u16*)0x5000000
 #define MEM_VRAM (u16*)0x6000000
 #define MEM_OAM (u32*)0x7000000
 #define MEM_SRAM (u8*)0xe000000
+#define NES_SRAM (u8*)0x3005000	//from equates.h
 #define INTR_VECT *(u32*)0x3007FFC
 #define SCREENBASE (u16*)0x6003800
 
@@ -85,6 +91,7 @@ typedef void (*fptr)(void);
 
 #define REG_DM0CNT_H *(u16*)0x40000ba
 #define REG_DM1CNT_H *(u16*)0x40000c6
+#define REG_DM2CNT_H *(u16*)0x40000d2
 #define REG_DM3CNT_H *(u16*)0x40000de
 #define REG_BLDMOD *(u16*)0x4000050
 #define REG_COLY *(u16*)0x4000054
@@ -102,5 +109,6 @@ typedef void (*fptr)(void);
 #define REG_SIOCNT *(vu16*)0x4000128
 #define REG_SIOMLT_SEND *(vu16*)0x400012a
 #define REG_RCNT *(vu16*)0x4000134
+#define REG_TM0CNT *(vu16*)0x4000102
 
 #endif

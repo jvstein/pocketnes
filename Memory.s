@@ -22,6 +22,10 @@ empty_R		;read bad address (error)
 		mov r1,#0
 		b debug_
 	]
+
+;	mov r0,addy,lsr#8
+;	mov r0,#0	;VS excitebike likes this
+;	mov pc,lr
 void ;- - - - - - - - -empty function
 	mov r0,#0	;VS excitebike likes this
 	mov pc,lr
@@ -63,12 +67,13 @@ sram_W	;sram write ($6000-$7FFF)
 sram_W2	;write to real sram ($6000-$7FFF)
 ;----------------------------------------------------------------------------
 	sub r2,addy,#0x5800
+		orr r1,addy,#0xe000000	;r1=e006000+
 	strb r0,[nes_zpage,r2]
-		ldr r1,sram_slot
-		strb r0,[r1,addy]
+		add r1,r1,#0x8000		;r1=e00e000+
+		strb r0,[r1]
 	mov pc,lr
 ;----------------------------------------------------------------------------
-rom_R	;rom read ($8000-$FFFF)
+rom_R	;rom read ($8000-$FFFF) (actually $6000-$FFFF now)
 ;----------------------------------------------------------------------------
 	adr r2,memmap_tbl
 	ldr r1,[r2,r1,lsl#2] ;r1=addy>>13

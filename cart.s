@@ -9,6 +9,7 @@
 	IMPORT findrom ;from main.c
 
 	EXPORT loadcart
+	EXPORT map67_
 	EXPORT map89_
 	EXPORT mapAB_
 	EXPORT mapCD_
@@ -31,18 +32,23 @@
 	EXPORT chr0123_
 	EXPORT chr4567_
 	EXPORT chr01234567_
+	EXPORT writeCHRTBL
 	EXPORT updateBGCHR_
 	EXPORT updateOBJCHR
 	EXPORT mirror1_
 	EXPORT mirror2V_
 	EXPORT mirror2H_
 	EXPORT mirror4_
+	EXPORT mirrorM_
+	EXPORT mirrorKonami_
 	EXPORT chrfinish
 	EXPORT savestate
 	EXPORT loadstate
-	EXPORT hflags
+	EXPORT g_emuflags
 	EXPORT romstart
 	EXPORT romnum
+	EXPORT g_scaling
+	EXPORT g_cartflags
 ;----------------------------------------------------------------------------
  AREA rom_code, CODE, READONLY
 ;----------------------------------------------------------------------------
@@ -53,35 +59,65 @@ mappertbl
 	DCD 2,mapper2init
 	DCD 3,mapper3init
 	DCD 4,mapper4init
+;	DCD 5,mapper5init
 	DCD 7,mapper7init
 	DCD 9,mapper9init
+	DCD 10,mapper10init
 	DCD 11,mapper11init
+	DCD 15,mapper15init
 	DCD 16,mapper16init
 	DCD 17,mapper17init
+	DCD 18,mapper18init
+	DCD 19,mapper19init
 	DCD 21,mapper21init
+	DCD 22,mapper22init
+	DCD 23,mapper23init
+	DCD 24,mapper24init
 	DCD 25,mapper25init
+	DCD 26,mapper26init
+	DCD 32,mapper32init
+	DCD 33,mapper33init
+	DCD 34,mapper34init
+	DCD 40,mapper40init
+	DCD 64,mapper64init
+	DCD 65,mapper65init
 	DCD 66,mapper66init
+	DCD 67,mapper67init
+	DCD 68,mapper68init
+	DCD 69,mapper69init
+	DCD 70,mapper70init
 	DCD 71,mapper71init
+	DCD 72,mapper72init
+	DCD 73,mapper73init
+	DCD 75,mapper75init
+	DCD 76,mapper76init
+	DCD 77,mapper77init
+	DCD 78,mapper78init
+	DCD 79,mapper79init
+	DCD 80,mapper80init
+	DCD 85,mapper85init
+	DCD 86,mapper86init
+	DCD 87,mapper87init
+	DCD 92,mapper92init
+	DCD 93,mapper93init
+	DCD 94,mapper94init
+	DCD 97,mapper97init
 	DCD 99,mapper99init
+	DCD 105,mapper105init
 	DCD 151,mapper151init
+	DCD 152,mapper152init
+	DCD 180,mapper180init
+	DCD 228,mapper228init
+	DCD 232,mapper232init
 	DCD -1,mapper0init
 
-m0000	DCD 0x1c02,NES_VRAM+0x2000,NES_VRAM+0x2000,NES_VRAM+0x2000,NES_VRAM+0x2000
-	DCD AGB_BG+0x0000,AGB_BG+0x0000,AGB_BG+0x0000,AGB_BG+0x0000
-m1111	DCD 0x1d02,NES_VRAM+0x2400,NES_VRAM+0x2400,NES_VRAM+0x2400,NES_VRAM+0x2400
-	DCD AGB_BG+0x0800,AGB_BG+0x0800,AGB_BG+0x0800,AGB_BG+0x0800
-m0101	DCD 0x5c02,NES_VRAM+0x2000,NES_VRAM+0x2400,NES_VRAM+0x2000,NES_VRAM+0x2400
-	DCD AGB_BG+0x0000,AGB_BG+0x0800,AGB_BG+0x0000,AGB_BG+0x0800
-m0011	DCD 0x9c02,NES_VRAM+0x2000,NES_VRAM+0x2000,NES_VRAM+0x2400,NES_VRAM+0x2400
-	DCD AGB_BG+0x0000,AGB_BG+0x0000,AGB_BG+0x0800,AGB_BG+0x0800
-m0123	DCD 0xdc02,NES_VRAM+0x2000,NES_VRAM+0x2400,NES_VRAM+0x2800,NES_VRAM+0x2c00
-	DCD AGB_BG+0x0000,AGB_BG+0x0800,AGB_BG+0x1000,AGB_BG+0x1800
 ;----------------------------------------------------------------------------
-loadcart ;called from C:  r0=rom number, r1=hackflags
+loadcart ;called from C:  r0=rom number, r1=emuflags
 ;----------------------------------------------------------------------------
 	stmfd sp!,{r0-r1,r4-r11,lr}
 
-	bl findrom		
+	ldr r1,=findrom
+	bl thumbcall_r1
 	add r0,r0,#48		;r0 now points to rom image (including header)
 
 	ldr globalptr,=|wram_globals0$$Base|	;need ptr regs init'd
@@ -97,7 +133,7 @@ loadcart ;called from C:  r0=rom number, r1=hackflags
 
 	ldmfd sp!,{r0-r1}
 	str r0,romnumber
-	str r1,hackflags
+        str r1,emuflags
 
 	mov r2,#1
 	ldrb r1,[r3,#-12]
@@ -157,20 +193,23 @@ loadcart ;called from C:  r0=rom number, r1=hackflags
 	str r5,agb_bg_map+4
 lc2
 	mov r0,#0		;default ROM mapping
-	bl map89AB_
+	bl map89AB_		;89AB=1st 16k
 	mov r0,#-1
-	bl mapCDEF_
+	bl mapCDEF_		;CDEF=last 16k
 
 	ldrb r0,[r3,#-10]
 	ldrb r1,[r3,#-9]
 	and r0,r0,#0x0f
 	orr r1,r0,r1,lsl#4
-	strb r1,cartflags	;set cartflags
+	tst r3,#0x8000000
+	biceq r1,r1,#SRAM		;don't use true SRAM if not running from a flash cart
+	strb r1,cartflags		;set cartflags
 
-	ldr r0,=default_scanlinehook
+;	ldr r0,=default_scanlinehook
+	ldr r0,=pcm_scanlinehook
 	str r0,scanlinehook	;no mapper irq
 
-	mov r0,#0xe0
+	mov r0,#0xe0		;was 0xe0
 	mov r1,#AGB_OAM
 	mov r2,#0x100
 	bl filler_		;no stray sprites please
@@ -182,22 +221,18 @@ lc2
 	mov r1,nes_zpage
 	mov r2,#0x2800/4
 	bl filler_
+	ldr r1,=mapperstate	;clear mapperdata so we don't have to do that in every MapperInit.
+	mov r2,#32/4
+	bl filler_
 
-	ldrb r0,hackflags+3	;get SRAM slot
-	subs r0,r0,#1		;numbered 1->N
-	bmi lc3
-	and r0,r0,#0x01f
-	ldr r1,=0xe000000-0x6000
-	add r1,r1,r0,lsl#13	;slot*$2000
-	str r1,sram_slot	;store address for sram_W2
-	add r1,r1,#0x6000
-	adr r2,nes_sram
-	adr r0,nes_sram+0x2000
-lc4	ldrb r4,[r1],#1
-	strb r4,[r2],#1
-	cmp r2,r0
-	bne lc4
-lc3
+	mov r0,#0x7c
+	mov r1,nes_zpage
+	ldr r2,=0x247d		;0x7c7d
+	strb r0,[r1,r2]		;for "Low G Man".
+	add r2,r2,#0x100
+	mov r0,#0x7d
+	strb r0,[r1,r2]		;for "Low G Man".
+
 	;ldr r1,=MEM_AGB_SCREEN	;clear AGB BG
 	;mov r2,#32*32*2
 	;bl filler_
@@ -206,10 +241,16 @@ lc3
 	ldr r1,=joypad_write_ptr
 	str r0,[r1]		;reset 4016 write (mapper99 messes with it)
 
+	ldr r1,=IO_R		;reset other writes..
+	str r1,readmem_tbl+8
+	ldr r1,=sram_R		;reset other writes..
+	str r1,readmem_tbl+12
 	ldr r1,=IO_W		;reset other writes..
 	str r1,writemem_tbl+8
 	ldr r1,=sram_W
 	str r1,writemem_tbl+12
+	ldr r1,=NES_RAM-0x5800	;$6000 for mapper 40, 69 & 90 that has rom here.
+	str r1,memmap_tbl+12
 
 	mov nes_pc,#0	;(eliminates any encodePC errors during mapper*init)
 	str nes_pc,lastbank
@@ -233,14 +274,15 @@ lc1				;call mapper*init
 	ldr r0,[r1,#-4]
 	ldmia r0!,{r1-r4}
 	stmia r5,{r1-r4}
-	mov pc,r0
+	mov pc,r0		;Jump to MapperInit
 0
 	ldrb r1,cartflags
 	tst r1,#MIRROR		;set default mirror
 	bl mirror2H_		;(call after mapperinit to allow mappers to set up cartflags first)
 
 	bl nes_reset		;reset everything else
-	ldmfd sp!,{r4-r11,pc}
+	ldmfd sp!,{r4-r11,lr}
+	bx lr
 ;----------------------------------------------------------------------------
 savestate	;called from ui.c.
 ;int savestate(void *here): copy state to <here>, return size
@@ -271,7 +313,8 @@ ss0	ldr r5,[r2],#4
 	ldr r2,rombase
 	bl fixromptrs
 
-	ldmfd sp!,{r4-r6,globalptr,pc}
+	ldmfd sp!,{r4-r6,globalptr,lr}
+	bx lr
 
 savelst	DCD rominfo,8,NES_RAM,0x2800,NES_VRAM,0x3000,agb_pal,96
 	DCD vram_map,64,agb_nt_map,16,mapperstate,48,rommap,16,cpustate,44,ppustate,28
@@ -296,14 +339,15 @@ fixromptrs	;add r2 to some things
 
 	mov pc,lr
 ;----------------------------------------------------------------------------
-loadstate	;void loadstate(int rom#,u32 *stateptr)	 (stateptr must be word aligned)
+loadstate	;called from ui.c
+;void loadstate(int rom#,u32 *stateptr)	 (stateptr must be word aligned)
 ;----------------------------------------------------------------------------
 	stmfd sp!,{r4-r7,globalptr,lr}
 
 	mov r6,r1		;r6=where state is at
 	ldr globalptr,=|wram_globals0$$Base|
 
-	ldr r1,[r6]		;hackflags
+        ldr r1,[r6]             ;emuflags
 	bl loadcart		;cart init
 
 	mov r0,#(lstend-savelst)/8	;read entire state
@@ -336,6 +380,16 @@ ls3	mov r1,r3
 	tst r4,#0x10000
 	beq ls4
 
+;--------------------------------
+	mov r0,#-1		;reset all CHR
+	adrl r1,agb_bg_map
+	mov r2,#6		;agb_bg_map,agb_obj_map
+	bl filler_
+	ldr r0,=0x0004080c
+	str r0,bg_recent
+;--------------------------------
+
+
 	mov r1,#-1		;init BG CHR
 	ldr r5,=AGB_VRAM
 	adrl r6,nes_chr_map
@@ -350,10 +404,39 @@ ls3	mov r1,r3
 	bl newX
 	bl resetBGCHR
 
-	ldmfd sp!,{r4-r7,globalptr,pc}
+	ldmfd sp!,{r4-r7,globalptr,lr}
+	bx lr
+;----------------------------------------------------------------------------
+m0000	DCD 0x1c02,NES_VRAM+0x2000,NES_VRAM+0x2000,NES_VRAM+0x2000,NES_VRAM+0x2000
+	DCD AGB_BG+0x0000,AGB_BG+0x0000,AGB_BG+0x0000,AGB_BG+0x0000
+m1111	DCD 0x1d02,NES_VRAM+0x2400,NES_VRAM+0x2400,NES_VRAM+0x2400,NES_VRAM+0x2400
+	DCD AGB_BG+0x0800,AGB_BG+0x0800,AGB_BG+0x0800,AGB_BG+0x0800
+m0101	DCD 0x5c02,NES_VRAM+0x2000,NES_VRAM+0x2400,NES_VRAM+0x2000,NES_VRAM+0x2400
+	DCD AGB_BG+0x0000,AGB_BG+0x0800,AGB_BG+0x0000,AGB_BG+0x0800
+m0011	DCD 0x9c02,NES_VRAM+0x2000,NES_VRAM+0x2000,NES_VRAM+0x2400,NES_VRAM+0x2400
+	DCD AGB_BG+0x0000,AGB_BG+0x0000,AGB_BG+0x0800,AGB_BG+0x0800
+m0123	DCD 0xdc02,NES_VRAM+0x2000,NES_VRAM+0x2400,NES_VRAM+0x2800,NES_VRAM+0x2c00
+	DCD AGB_BG+0x0000,AGB_BG+0x0800,AGB_BG+0x1000,AGB_BG+0x1800
 ;----------------------------------------------------------------------------
  AREA wram_code4, CODE, READWRITE
 ;----------------------------------------------------------------------------
+mirrorKonami_
+	movs r1,r0,lsr#2
+	tst r0,#1
+	bcc mirror2V_
+	bcs mirror1_
+mirrorM_
+	mov r1,r0,lsr#2
+	eor r1,r1,r0
+	and r1,r1,#0x30
+	beq mirror2V_
+
+	mov r1,r0,lsr#4
+	eor r1,r1,r0
+	and r1,r1,#0x0c
+	beq mirror2H_
+
+;	b mirrorchange
 mirror1_
 	ldrne r0,=m1111
 	ldreq r0,=m0000
@@ -393,6 +476,16 @@ mirrorchange
 	ldmia r0!,{r2-r5}
 	stmia r1,{r2-r5}
 	ldmfd sp!,{r3-r5,pc}
+;----------------------------------------------------------------------------
+map67_	;rom paging.. r0=page#
+;----------------------------------------------------------------------------
+	ldr r1,rombase
+	sub r1,r1,#0x6000
+	ldr r2,rommask
+	and r0,r0,r2,lsr#13
+	add r0,r1,r0,lsl#13
+	str r0,memmap_tbl+12
+	b flush
 ;----------------------------------------------------------------------------
 map89_	;rom paging.. r0=page#
 ;----------------------------------------------------------------------------
@@ -472,6 +565,8 @@ map89ABCDEF_
 	str r0,memmap_tbl+24
 	str r0,memmap_tbl+28
 	b flush
+;----------------------------------------------------------------------------
+writeCHRTBL	DCD chr0_,chr1_,chr2_,chr3_,chr4_,chr5_,chr6_,chr7_
 ;----------------------------------------------------------------------------
 chr0_
 ;----------------------------------------------------------------------------
@@ -804,7 +899,9 @@ uc3
 	tst r2,#0x08
 	bne uc2
 uc1
-	ldr r0,old_chr_map ;use old copy (OAM lags behind a frame)
+	ldr r0,new_chr_map ;use old copy (OAM lags behind 2 frames)
+	ldr r1,old_chr_map ;use old copy (OAM lags behind a frame)
+	str r1,new_chr_map
 	ldr r1,agb_obj_map
 	eors r1,r1,r0
 	moveq pc,lr
@@ -813,7 +910,9 @@ uc1
 	adrl r6,agb_obj_map
 	b im_lazy
 uc2
-	ldr r0,old_chr_map+4
+	ldr r0,new_chr_map+4
+	ldr r1,old_chr_map+4
+	str r1,new_chr_map+4
 	ldr r1,agb_obj_map+4
 	eors r1,r1,r0
 	moveq pc,lr
@@ -913,8 +1012,15 @@ cached;--------------move to the top of the list:
  [ BUILD = "DEBUG"
  AREA zzzzz, DATA, READWRITE ;MUST be last area
 
-	DCB "0123456789abcdef"
-	% 32
+	DCB "0123456789abcdef0123456789abcde",0
+	DCD 16400 ;romsize
+	DCD 0 ;flags
+	DCD 0 ;follow
+	DCD 0 ;saveslot
+	DCB "NES",0x1a
+
+	INCBIN ..\gbabin\roms\sndtest.nes
+
  ]
 ;----------------------------------------------------------------------------
  AREA wram_globals2, CODE, READWRITE
@@ -923,6 +1029,7 @@ mapperstate
 	% 32	;mapperdata
 	% 8	;nes_chr_map	vrom paging map for NES VRAM $0000-1FFF
 	% 8	;old_chr_map	(for updateOBJCHR)
+	% 8	;new_chr_map	(FluBBas fix)
 
 	DCD 0,0,0,0	;agb_bg_map	vrom paging map for AGB BG CHR
 	DCD 0,0		;agb_obj_map	vrom paging map for AGB OBJ CHR
@@ -931,15 +1038,16 @@ romstart
 	DCD 0 ;rombase
 romnum
 	DCD 0 ;romnumber
-rominfo			;keep hackflags/BGmirror together for savestate/loadstate
-hflags	DCD SCALESPRITES ;hackflags	(label this so UI.C can take a peek) see equates.h for bitfields
+rominfo                 ;keep emuflags/BGmirror together for savestate/loadstate
+g_emuflags	DCB 0 ;emuflags        (label this so UI.C can take a peek) see equates.h for bitfields
+g_scaling	DCB SCALED_SPRITES ;(display type)
+	% 2   ;(sprite follow val)
 	DCD 0 ;BGmirror		(BG size for BG0CNT)
 
 	DCD 0 ;rommask
 	DCD 0 ;vrombase
 	DCD 0 ;vrommask
-	DCD 0 ;sram_slot
-
+g_cartflags
 	DCB 0 ;cartflags
 ;----------------------------------------------------------------------------
 	END

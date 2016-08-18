@@ -1,5 +1,6 @@
 	IMPORT loadcart
 	IMPORT vrom_req
+	IMPORT map67_
 	IMPORT map89_
 	IMPORT mapAB_
 	IMPORT mapCD_
@@ -22,11 +23,14 @@
 	IMPORT chr0123_
 	IMPORT chr4567_
 	IMPORT chr01234567_
+	IMPORT writeCHRTBL
 	IMPORT updateBGCHR_
 	IMPORT updateOBJCHR
 	IMPORT mirror1_
 	IMPORT mirror2H_
 	IMPORT mirror2V_
 	IMPORT mirror4_
+	IMPORT mirrorM_
+	IMPORT mirrorKonami_
 	IMPORT chrfinish
 	END

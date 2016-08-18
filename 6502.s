@@ -9,17 +9,24 @@
 	INCLUDE sound.h
 
 	IMPORT |wram_globals0$$Base|
-	IMPORT ui	;from ui.c
+	IMPORT ui	;ui.c
+	IMPORT quickload	;sram.c
+	IMPORT quicksave	;sram.c
+	IMPORT pcmctrl
 
 	EXPORT nes_reset
 	EXPORT run
 	EXPORT op_table
 	EXPORT default_scanlinehook
+	EXPORT pcm_scanlinehook
 	EXPORT irq6502
 	EXPORT agb_vbl
 	EXPORT cpustate
 	EXPORT rommap
 	EXPORT frametotal
+
+pcmirqbakup EQU mapperdata+24
+pcmirqcount EQU mapperdata+28
 ;----------------------------------------------------------------------------
 _xx;	???					;invalid opcode
 ;----------------------------------------------------------------------------
@@ -1051,6 +1058,9 @@ _FE;   INC $xxxx,X
 ;----------------------------------------------------------------------------
 run	;r0=0 to return after frame
 ;----------------------------------------------------------------------------
+	mov r1,#0
+	strb r1,novblankwait
+
 	str r0,dontstop
 	tst r0,#1
 	stmeqfd sp!,{nes_nz-nes_pc,globalptr,nes_zpage,lr}
@@ -1068,43 +1078,83 @@ waitformulti
 	ldr r1,=REG_P1		;refresh input every frame
 	ldrh r0,[r1]
 		eor r0,r0,#0xff
-		eor r0,r0,#0x300
+		eor r0,r0,#0x300	;r0=button state (raw)
 	ldr r1,AGBjoypad
 	eor r1,r1,r0
 	and r1,r1,r0		;r1=button state (0->1)
-	str r0,AGBjoypad	;r0=button state (raw)
+	str r0,AGBjoypad
 
-	tst r1,#0x200		;L for BG adjust
-	ldrne r2,adjustblend
-	addne r2,r2,#1
-	strne r2,adjustblend
-
-	ldr r3,hackflags
-	tst r3,#NOSCALING
-	beq %F0
+        ldrb r3,emuflags+1
+	cmp r3,#SCALED
+	bhs %F0			;if unscaled
 	ldr r3,windowtop
-	tst r0,#0x100		;R=scroll down
+	tst r0,#0x100			;R=scroll down
 	addne r3,r3,#2
 	cmp r3,#79
 	movhi r3,#79
-	tst r0,#0x200		;L=scroll up
+	tst r0,#0x200			;L=scroll up
 	subnes r3,r3,#2
 	movmi r3,#0
 	str r3,windowtop
 0
 	ldr r2,dontstop
 	cmp r2,#0
-	ldmeqfd sp!,{nes_nz-nes_pc,globalptr,nes_zpage,pc}	;exit here if doing single frame
+	ldmeqfd sp!,{nes_nz-nes_pc,globalptr,nes_zpage,lr}	;exit here if doing single frame:
+	bxeq lr							;return to rommenu()
 
-	tst r1,#0x300		;if L or R pressed
+	;----anything from here til line0x won't get executed while rom menu is active---
+
+	mov r2,#REG_BASE
+	mov r3,#0x0110
+	strh r3,[r2,#REG_BLDMOD]	;stop darkened screen,OBJ blend to BG0
+	mov r3,#0x1000			;BG0=16, OBJ=0
+	strh r3,[r2,#REG_COLEV]		;Alpha values
+
+	adr lr,line0x		;return here after doing L/R + SEL/START
+
+	tst r1,#0x300		;if L or R was pressed
 	tstne r0,#0x100
-	tstne r0,#0x200		;and both L+R held..
-	beq line0x
-	str r3,[sp,#-4]!
-	bl ui				;go to menu
-	ldr r3,[sp],#4
+	tstne r0,#0x200		;and both L+R are held..
+	ldrne r1,=ui
+	bxne r1			;do menu
+
+	ands r3,r0,#0x300		;if either L or R is pressed (not both)
+	eornes r3,r3,#0x300
+	bicne r0,r0,#0x0c		;	hide sel,start from NES
+	str r0,NESjoypad
+	beq line0x		;skip ahead if neither or both are pressed
+
+	tst r0,#0x200
+	tstne r1,#4		;L+SEL for BG adjust
+	ldrne r2,adjustblend
+	addne r2,r2,#1
+	strne r2,adjustblend
+
+	tst r0,#0x200		;L?
+	tstne r1,#8		;START?
+	ldrb r2,novblankwait	;0=Normal, 1=No wait, 2=Slomo
+	addne r2,r2,#1
+	cmp r2,#3
+	moveq r2,#0
+	strb r2,novblankwait
+
+	tst r0,#0x100		;R?
+	tstne r1,#8		;START:
+	ldrne r1,=quickload
+	bxne r1
+
+	tst r0,#0x100		;R?
+	tstne r1,#4		;SELECT:
+	ldrne r1,=quicksave
+	bxne r1
 line0x
-	bl refreshNESjoypads
+;	mov r1,#AGB_PALETTE
+;	mov r0,#0		;black
+;	strh r0,[r1]		;BG palette
+;	ldr r0,frame
+;	mov r1,#2
+;	bl debug_
+	bl refreshNESjoypads	;Z=1 if communication ok
 	bne waitformulti	;waiting on other GBA..
 
 	ldr r0,AGBjoypad
@@ -1115,58 +1165,89 @@ line0x
 	str r2,fiveminutes
 	bleq suspend
 
-	ldrb r0,ppuctrl0
-	strb r0,ppuctrl0frame		;Contra likes this
-
 	mov r1,#0
 	strb r1,ppustat		;vbl clear, sprite0 clear
 	str r1,scanline		;reset scanline count
 
 	bl newframe		;display update
-
 	bl updatesound
+
+ [ BUILD <> "DEBUG"
+	ldrb r1,novblankwait
+	teq r1,#1
+	beq l03
 l01
+	swieq 0x020000		; Turn of CPU until IRQ if not too late allready.
 	ldrb r0,agb_vbl		;wait for AGB VBL
 	cmp r0,#0
 	beq l01
+	teq r1,#2		;Check for slomo
+	moveq r1,#0
+	streqb r1,agb_vbl
+	beq l01
+
+l03
 	mov r0,#0
 	strb r0,agb_vbl
- [ DEBUG
-	mov r1,#REG_BASE
-	strh r0,[r1,#REG_BLDMOD]	;stop profiling shite
  ]
 	adr r0,cpuregs
 	ldmia r0,{nes_nz-nes_pc}	;restore 6502 state
 
 	ldr r0,cyclesperscanline
+	ldr r1,frame
+	tst r1,#1
+	subeq r0,r0,#CYCLE		;Every other frame has 1/3 less CPU cycle.
 	add cycles,cycles,r0
-	adr r0,line1_to_240
+	adr r0,line1_to_119
 	str r0,nexttimeout
 
 	ldr pc,scanlinehook
-line1_to_240 ;------------------------
+line1_to_119 ;------------------------
 	ldr r0,cyclesperscanline
 	add cycles,cycles,r0
 
 	ldr r1,scanline
 	add r1,r1,#1
 	str r1,scanline
-	cmp r1,#240
-	adreq addy,line241
-	streq addy,nexttimeout
+	cmp r1,#119
+	ldrne pc,scanlinehook
+;--------------------------------------------- between 119 and 120
+	ldr r0,nes_chr_map		;For sprites
+	str r0,old_chr_map		;TMNT 2 likes this
+	ldr r0,nes_chr_map+4
+	str r0,old_chr_map+4
 
+	ldrb r0,ppuctrl0
+	strb r0,ppuctrl0frame		;Contra likes this
+
+	adr addy,line120_to_240
+	str addy,nexttimeout
 	ldr pc,scanlinehook
-line241 ;------------------------
+line120_to_240 ;------------------------
+	ldr r0,cyclesperscanline
+	add cycles,cycles,r0
+
+	ldr r1,scanline
+	add r1,r1,#1
+	str r1,scanline
+	cmp r1,#241
+	ldrne pc,scanlinehook
+
+	adr addy,line242
+	str addy,nexttimeout
+	ldr pc,scanlinehook
+line242 ;------------------------
 NMIDELAY EQU CYCLE*30
 	add cycles,cycles,#NMIDELAY	;NMI is delayed a few cycles..
 
 	mov r1,#0x80
 	strb r1,ppustat		;vbl flag
 
-	adr addy,line241NMI
+	adr addy,line242NMI
 	str addy,nexttimeout
 	b default_scanlinehook
-line241NMI ;---------------------------
+	b default_scanlinehook
+line242NMI ;---------------------------
 	ldr r0,frame
 	add r0,r0,#1
 	str r0,frame
@@ -1174,8 +1255,6 @@ line241NMI ;---------------------------
 	mov r1,#REG_BASE			;darken screen during NES vblank
 	mov r0,#0x00f1
 	strh r0,[r1,#REG_BLDMOD]
-	mov r0,#0x0003
-	strh r0,[r1,#REG_COLY]
 	ldrh r0,[r1,#REG_VCOUNT]
 	mov r1,#19
 	bl debug_
@@ -1209,7 +1288,7 @@ line241NMI ;---------------------------
 	adr r1,line242_to_end
 	str r1,nexttimeout
 
-	mov r0,#241
+	mov r0,#242
 	str r0,scanline
 
 	ldr pc,scanlinehook
@@ -1227,6 +1306,30 @@ line242_to_end ;------------------------
 
 	ldr pc,scanlinehook
 
+pcm_scanlinehook
+	ldr r1,=pcmctrl
+	ldr r2,[r1]
+	tst r2,#0x1000			;Is PCM on?
+	beq hk0
+
+	ldr r0,pcmirqcount
+;	ldr r1,cyclesperscanline
+;	subs r0,r0,r1,lsr#4
+	subs r0,r0,#121			;Fire Hawk=122
+	str r0,pcmirqcount
+	bpl hk0
+
+	tst r2,#0x40			;Is PCM loop on?
+	ldrne r0,pcmirqbakup
+	strne r0,pcmirqcount
+	bne hk0
+	tst r2,#0x80			;Is PCM IRQ on?
+	orrne r2,r2,#0x8000		;set pcm IRQ bit in R4015
+	bic r2,r2,#0x1000		;clear channel 5
+;	ldr r1,=pcmctrl
+	str r2,[r1]
+	bne irq6502
+hk0
 default_scanlinehook
 	fetch 0
 ;----------------------------------------------------------
@@ -1259,6 +1362,7 @@ irq6502
 fiveminutes DCD 5*60*60
 dontstop DCD 0
 agb_vbl DCB 0		;nonzero when AGB enters vblank
+novblankwait DCB 0
 ;----------------------------------------------------------------------------
 	AREA rom_code, CODE, READONLY
 
@@ -1270,17 +1374,18 @@ nes_reset	;called by loadcart (r0-r9 are free to use)
 	bl sound_reset_
 	bl ppureset_
 ;---SRAM setup
-	ldr r0,hackflags
-	tst r0,#0xff000000		;use flash cart sram?
-	ldrne r1,=sram_W2		;allow writes to cart sram
+	ldrb r0,cartflags
+	tst r0,#SRAM			;use sram?
+	ldrne r1,=sram_W2			;write to cart sram
 	strne r1,writemem_tbl+12
 ;---NTSC/PAL
+	ldr r0,emuflags
 	tst r0,#PALTIMING
-	ldreq r1,=341*CYCLE
-	ldrne r1,=320*CYCLE
+	ldreq r1,=341*CYCLE		;NTSC		(113+2/3)*3
+	ldrne r1,=320*CYCLE		;PAL		(106+9/16)*3
 	str r1,cyclesperscanline
-	ldreq r1,=261
-	ldrne r1,=311
+	ldreq r1,=261			;NTSC
+	ldrne r1,=311			;PAL
 	str r1,lastscanline
 ;---cpu reset
 	tst r0,#NOCPUHACK	;load opcode set

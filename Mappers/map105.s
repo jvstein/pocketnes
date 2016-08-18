@@ -1,40 +1,69 @@
-	AREA wram_code3, CODE, READWRITE
+	AREA rom_code, CODE, READONLY
 
 	INCLUDE equates.h
 	INCLUDE memory.h
 	INCLUDE ppu.h
 	INCLUDE cart.h
+	INCLUDE 6502.h
+	INCLUDE 6502mac.h
 
-	EXPORT mapper1init
+	EXPORT mapper105init
 
-reg0 EQU mapperdata+0
-reg1 EQU mapperdata+1
-reg2 EQU mapperdata+2
-reg3 EQU mapperdata+3
-latch EQU mapperdata+4
-latchbit EQU mapperdata+5
+counter EQU mapperdata+0
+reg0 EQU mapperdata+4
+reg1 EQU mapperdata+5
+reg2 EQU mapperdata+6
+reg3 EQU mapperdata+7
+latch EQU mapperdata+8
+latchbit EQU mapperdata+9
+
+dip EQU 0xb			; DIPswitch, for playtime. 6min default.
+				; 0x0 - 9.695
+				; 0x1 - 9.318
+				; 0x2 - 9.070
+				; 0x3 - 8.756
+				; 0x4 - 8.444
+				; 0x5 - 8.131
+				; 0x6 - 7.818
+				; 0x7 - 7.505
+				; 0x8 - 7.193
+				; 0x9 - 6.880
+				; 0xa - 6.567
+				; 0xb - 6.254
+				; 0xc - 5.942
+				; 0xd - 5.629
+				; 0xe - 5.316
+				; 0xf - 5.001
 ;----------------------------------------------------------------------------
-mapper1init
+mapper105init
 ;----------------------------------------------------------------------------
-	DCD write0,write1,write2,write3
+	DCD write0,write1,void,write3
 
-	mov r0,#0x0e	;init MMC1 regs
+	adr r0,hook
+	str r0,scanlinehook
+
+	mov r0,#0x0c	;init MMC1 regs
 	strb r0,reg0
-	mov r0,#0x10
-	strb r0,reg1
-	strb r0,reg2
-	mov r0,#0x00
-	strb r0,reg3
-reset
+;	mov r0,#0x00
+;	strb r0,reg1
+;	strb r0,reg2
+;	strb r0,reg3
+;reset
 	mov r0,#0
 	strb r0,latch
 	strb r0,latchbit
 
-	ldrb r0,reg0
-	orr r0,r0,#0x0e
-	strb r0,reg0
+;	ldrb r0,reg0
+;	orr r0,r0,#0x0c
+;	strb r0,reg0
 
-	b romswitch
+	mov r0,#0
+	b map89ABCDEF_
+reset
+	mov r0,#0
+	strb r0,latch
+	strb r0,latchbit
+	mov pc,lr
 ;----------------------------------------------------------------------------
 write0		;($8000-$9FFF)
 ;----------------------------------------------------------------------------
@@ -83,68 +112,30 @@ w1	strb r1,latch
 	strb r1,latchbit
 	strb r0,reg1
     ;----
-	ldr r1,vrommask
-	tst r1,#0x80000000
-	bne romswitch
-
-	mov addy,lr
-	ldrb r1,reg0
-	tst r1,#0x10
-	bne w11
-
-	str r0,[sp,#-4]!
-	bl chr0123_
-	ldr r0,[sp],#4
-	add r0,r0,#1
-	bl chr4567_
-	mov lr,addy
-	b romswitch
-w11
-	bl chr0123_
-	mov lr,addy
-	b romswitch
-;----------------------------------------------------------------------------
-write2		;($C000-$DFFF)
-;----------------------------------------------------------------------------
-	adr addy,w2
-	b writelatch
-w2	strb r1,latch
-	strb r1,latchbit
-	strb r0,reg2
-    ;----
-	ldrb r1,reg0
-	tst r1,#0x10
-	moveq pc,lr
-
-	ldr r1,vrommask
-	tst r1,#0x80000000
-	bne romswitch
-
-	mov addy,lr
-	bl chr4567_
-	mov lr,addy
+	tst r0,#0x10
+	strne r1,counter	;#0
 	b romswitch
 ;----------------------------------------------------------------------------
 write3		;($E000-$FFFF)
 ;----------------------------------------------------------------------------
 	adr addy,w3
 	b writelatch
-w3	and r0,r0,#0x0f
-	strb r1,latch
+w3	strb r1,latch
 	strb r1,latchbit
 	strb r0,reg3
 ;----------------------------------------------------------------------------
 romswitch;
 ;----------------------------------------------------------------------------
 	ldrb r0,reg1
-	ldrb r1,reg3
-	and r0,r0,#0x10
-	orr r0,r0,r1
+	tst r0,#0x8
+	beq rs2
+	ldrb r0,reg3
+	orr r0,r0,#0x8
 
 	ldrb r1,reg0
 	tst r1,#0x08
 	beq rs1
-				;switch 16k:
+				;switch 16k / high 128k:
 	str lr,[sp,#-4]!
 	mov addy,r0
 	tst r1,#0x04
@@ -156,11 +147,35 @@ romswitch;
 	b mapCDEF_	;hardwired high bank
 rs0
 	bl mapCDEF_	;map high bank
-	and r0,addy,#0x10
+	and r0,addy,#0x08
 	ldr lr,[sp],#4
 	b map89AB_	;hardwired low bank
 rs1				;switch 32k:
 	mov r0,r0,lsr#1
 	b map89ABCDEF_
+rs2				;switch 32k / low 128k:
+	mov r0,r0,lsr#1
+	and r0,r0,#0x3
+	b map89ABCDEF_
+;----------------------------------------------------------------------------
+hook
+;----------------------------------------------------------------------------
+
+	ldrb r1,reg1
+	tst r1,#0x10
+	bne hk0
+
+	ldr r0,counter
+	add r0,r0,#113			; Cycles per scanline
+	str r0,counter
+	orr r0,r0,#dip<<25		; DIP switch
+	cmp r0,#0x3e000000
+	blo hk0
+
+;	mov r1,#0
+;	str r1,counter
+	b irq6502
+hk0
+	fetch 0
 ;----------------------------------------------------------------------------
 	END

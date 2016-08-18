@@ -5,8 +5,6 @@
 	INCLUDE cart.h
 	INCLUDE 6502.h
 
-	IMPORT C_entry	;from main.c
-
 	EXPORT IO_reset_
 	EXPORT IO_R
 	EXPORT IO_W
@@ -18,11 +16,13 @@
 	EXPORT refreshNESjoypads
 	EXPORT serialinterrupt
 	EXPORT resetSIO
+	EXPORT thumbcall_r1
+
 
  AREA rom_code, CODE, READONLY ;-- - - - - - - - - - - - - - - - - - - - - -
 
-scaleparms
-	DCD 0x0000,0x0100,0xff01,0x0150,0xfeb6,OAM_BUFFER1+6,AGB_OAM+518
+scaleparms;	   NH     FH     NV     FV
+	DCD 0x0000,0x0100,0xff00,0x0150,0xfeb6,OAM_BUFFER1+6,AGB_OAM+518
 ;----------------------------------------------------------------------------
 IO_reset_
 ;----------------------------------------------------------------------------
@@ -53,6 +53,7 @@ IO_reset_
 		strh r0,[r5],#8
 		strh r0,[r5],#8
 		strh r3,[r5],#232
+
 	strh r1,[r6],#8				;7000200
 	strh r0,[r6],#8
 	strh r0,[r6],#8
@@ -62,13 +63,15 @@ IO_reset_
 		strh r0,[r6],#8
 		strh r4,[r6]
 
-	ldrb r0,hackflags
-;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-spriteinit	;build yscale_lookup tbl (called by ui.c) r0=hackflags
+        ldrb r0,emuflags+1
+	;..to spriteinit
+;----------------------------------------------------------------------------
+spriteinit	;build yscale_lookup tbl (called by ui.c) r0=scaletype
+;called by ui.c:  void spriteinit(char scaletype) (pass scaletype in r0 because globals ptr isn't set up to read it)
 ;----------------------------------------------------------------------------
 	ldr r3,=YSCALE_LOOKUP
-	tst r0,#NOSCALING
-	beq si1
+	cmp r0,#SCALED
+	bhs si1
 
 	sub r3,r3,#80
 	mov r0,#-79
@@ -76,18 +79,49 @@ si3	strb r0,[r3],#1
 	add r0,r0,#1
 	cmp r0,#256
 	bne si3
-	mov pc,lr
+	bx lr
 si1
 	ldr r0,=0x00c00000		;0.75
 	ldr r1,=0xf5000000		;-14*0.75
+	ldrhi r1,=0xf1000000		;-14*0.75 was 0xf5000000
 si4	mov r2,r1,lsr#24
 	strb r2,[r3],#1
 	add r1,r1,r0
 	cmp r2,#0xb4
 	bne si4
-	mov pc,lr
+	bx lr
+;----------------------------------------------------------------------------
+suspend	;called from ui.c and 6502.s
+;-------------------------------------------------
+	stmfd sp!,{r0,r1,lr}
+	mov r3,#REG_BASE
 
+	ldr r1,=REG_P1CNT
+	ldr r0,=0xc00c			;interrupt on start+sel
+	strh r0,[r3,r1]
+
+	ldrh r1,[r3,#REG_SGCNT_L]
+	strh r3,[r3,#REG_SGCNT_L]	;sound off
+
+	ldrh r0,[r3,#REG_DISPCNT]
+	orr r0,r0,#0x80
+	strh r0,[r3,#REG_DISPCNT]	;LCD off
+
+	swi 0x030000
+
+	ldrh r0,[r3,#REG_DISPCNT]
+	bic r0,r0,#0x80
+	strh r0,[r3,#REG_DISPCNT]	;LCD on
+
+	strh r1,[r3,#REG_SGCNT_L]	;sound on
+
+	ldmfd sp!,{r0,r1,lr}
+	bx lr
+;--------------------------------------------------
+	INCLUDE visoly.s
  AREA wram_code1, CODE, READWRITE ;-- - - - - - - - - - - - - - - - - - - - - -
+
+thumbcall_r1 bx r1
 ;----------------------------------------------------------------------------
 IO_R		;I/O read
 ;----------------------------------------------------------------------------
@@ -140,9 +174,10 @@ joypad_write_ptr
 ;----------------------------------------------------------------------------
 dma_W	;(4014)		sprite DMA transfer
 ;----------------------------------------------------------------------------
-PRIORITY EQU 0x800	;AGB OBJ priority (2/3)
+PRIORITY EQU 0x800	;0x800=AGB OBJ priority 2/3
 
-	ldr r1,=3*514*CYCLE
+
+	ldr r1,=3*512*CYCLE		; was 514...
 	sub cycles,cycles,r1
 	[ DEBUG
 		tst r0,#0x80		;DMA from rom?
@@ -162,24 +197,22 @@ PRIORITY EQU 0x800	;AGB OBJ priority (2/3)
 	str r1,oambuffer+4
 	str r0,oambuffer+8
 
-	ldr r1,hackflags
-	tst r1,#SCALESPRITES
-	movne r6,#0x100		;r6=rot/scale flag
-	moveq r6,#0
+        ldr r1,emuflags
+	and r5,r1,#0x300
+	cmp r5,#SCALED_SPRITES*256
+	moveq r6,#0x300		;r6=rot/scale flag + double
+	movne r6,#0
 
-	tst r1,#NOSCALING
-	beq dm0
-	tst r1,#SPRITEFOLLOW+MEMFOLLOW
-	beq dm0				;do autoscroll
+	cmp r5,#UNSCALED_AUTO*256	;do autoscroll
+	bne dm0
 	ldr r3,AGBjoypad
-	tst r3,#0x100
-	tsteq r3,#0x200
-	bne dm0				;stop if L/R pressed (manual scroll)
-	mov r3,r1,lsr#8
-	bic r3,r3,#0xff0000
-	tst r1,#SPRITEFOLLOW
-	ldrneb r0,[addy,r3,lsl#2]
-	ldreqb r0,[nes_zpage,r3]
+	ands r3,r3,#0x300
+	eornes r3,r3,#0x300
+	bne dm0				;stop if L or R pressed (manual scroll)
+	mov r3,r1,lsr#16			;r3=follow value
+	tst r1,#FOLLOWMEM
+	ldreqb r0,[addy,r3,lsl#2]			;follow sprite
+	ldrneb r0,[nes_zpage,r3]			;follow memory
 	cmp r0,#239
 	bhi dm0
 	add r0,r0,r0,lsl#2
@@ -220,39 +253,50 @@ dm0
 	cmpeq r1,#0
 	and r0,r0,#31
 	ldrb r1,[addy]			;r1=sprite0 Y
+	add r1,r1,#1
 	add r1,r1,r0,lsr#2
-	moveq r1,#512			;blank tile=no hit
+;	moveq r1,#512			;blank tile=no hit
 	cmp r1,#239
-	movhi r1,#512			;no hit if Y>239
+	movhi r1,#512			;no hit if Y>240
 	str r1,sprite0y
+;	ldrb r1,[addy,#3]			;r1=sprite0 x
+;	strb r1,sprite0x
 dm11
 	ldr r3,[addy],#4
 	and r0,r3,#0xff
 	cmp r0,#239
 	bhi dm10		;skip if sprite Y>239
-	ldrb r0,[r5,r0]		;y
-	subs r1,r3,#0x08000000	;x-8
+	ldrb r0,[r5,r0]		;y = scaled y
+
+	ands r1,r6,#0x100
+	add r1,r1,#0x200
+	tstne r3,#0x00400000
+	addne r1,r1,#0x40
+
+	subs r1,r3,r1,lsl#18
+;#0x0c000000	;x-8
 	and r1,r1,#0xff000000
 	orr r0,r0,r1,lsr#8
 	orrcc r0,r0,#0x01000000
 	and r1,r3,#0x00c00000	;flip
 	orr r0,r0,r1,lsl#6
-	orr r0,r0,r6		;rot/scale
-	str r0,[r2],#4
+	and r1,r3,#0x00200000	;priority
+	orr r0,r0,r1,lsr#11	;Set Transp OBJ.
+	orr r0,r0,r6		;rot/scale, double
+	str r0,[r2],#4		;store OBJ Atr 0,1
+
 	and r1,r3,#0x0000ff00	;tile#
 	mov r0,r1,lsr#8
 	and r1,r3,#0x00030000	;color
 	orr r0,r0,r1,lsr#4
-	and r1,r3,#0x00200000	;priority
-	orr r0,r0,r1,lsr#11
 	orr r0,r0,r4		;tileset+priority
-	strh r0,[r2],#4
+	strh r0,[r2],#4		;store OBJ Atr 2
 dm9
 	tst addy,#0xff
 	bne dm11
 	ldmfd sp!,{r3-r6,pc}
 dm10
-	mov r0,#0xe0
+	mov r0,#0x2a0		;double, y=160
 	str r0,[r2],#8
 	b dm9
 
@@ -297,11 +341,14 @@ dm4	;- - - - - - - - - - - - -8x16
 	cmpeq r1,#0
 	and r0,r0,#63
 	ldrb r1,[addy]			;r1=sprite0 Y
+	add r1,r1,#1
 	add r1,r1,r0,lsr#2
-	moveq r1,#512			;blank tile=no hit
-	cmp r1,#239
+;	moveq r1,#512			;blank tile=no hit
+	cmp r1,#240
 	movhi r1,#512			;no hit if Y>239
 	str r1,sprite0y
+;	ldrb r1,[addy,#3]			;r1=sprite0 x
+;	strb r1,sprite0x
 
 	mov r4,#PRIORITY
 	orr r6,r6,#0x8000	;8x16 flag
@@ -310,71 +357,110 @@ dm12
 	and r0,r3,#0xff
 	cmp r0,#239
 	bhi dm13		;skip if sprite Y>239
+	tst r6,#0x300
+	subne r0,r0,#5
+	andne r0,r0,#0xff
 	ldrb r0,[r5,r0]		;y
-	subs r1,r3,#0x08000000	;x-8
+
+	ands r1,r6,#0x100
+	add r1,r1,#0x200
+	tstne r3,#0x00400000
+	addne r1,r1,#0x40
+
+	subs r1,r3,r1,lsl#18
+;#0x0c000000	;x-8
 	and r1,r1,#0xff000000
 	orr r0,r0,r1,lsr#8
 	orrcc r0,r0,#0x01000000
 	and r1,r3,#0x00c00000	;flip
 	orr r0,r0,r1,lsl#6
+	and r1,r3,#0x00200000	;priority
+	orr r0,r0,r1,lsr#11	;Set Transp OBJ.
 	orr r0,r0,r6		;8x16+rot/scale
-	str r0,[r2],#4
+	str r0,[r2],#4		;store OBJ Atr 0,1
+
 	and r1,r3,#0x0000ff00	;tile#
 	movs r0,r1,lsr#9
 	orrcs r0,r0,#0x80
 	orr r0,r4,r0,lsl#1	;priority, tile#*2
 	and r1,r3,#0x00030000	;color
 	orr r0,r0,r1,lsr#4
-	and r1,r3,#0x00200000	;priority
-	orr r0,r0,r1,lsr#11
-	strh r0,[r2],#4
+	strh r0,[r2],#4		;store OBJ Atr 2
 dm14
 	tst addy,#0xff
 	bne dm12
 	ldmfd sp!,{r3-r6,pc}
 dm13
-	mov r0,#0xe0
+	mov r0,#0x2a0		;double, y=160
 	str r0,[r2],#8
 	b dm14
 ;----------------------------------------------------------------------------
 serialinterrupt
 ;----------------------------------------------------------------------------
-	strh r0,[r2,#2]		;IF clear
-
 	mov r3,#REG_BASE
 	add r3,r3,#0x100
-	ldrh r1,[r3,#REG_SIOCNT]
 
-	tst r1,#0x40		;communication error?
+	mov r0,#0x1
+serWait	subs r0,r0,#1
+	bne serWait
+	mov r0,#0x100		;time to wait.
+	ldrh r1,[r3,#REG_SIOCNT]
+	tst r1,#0x80		;Still transfering?
+	bne serWait
+
+	tst r1,#0x40		;communication error? resend?
 	bne sio_err
 
-	ldr r0,[r3,#0x20]
-	tst r1,#0x10		;are we master or slave GBA?
-	moveq r0,r0,ror#16	;lower half=what they sent, upper half=what we sent
+	ldr r0,[r3,#REG_SIOMULTI0]	;Both SIOMULTI0&1
+	ldr r1,[r3,#REG_SIOMULTI2]	;Both SIOMULTI2&3
 
-	and r2,r0,#0xff00
+	and r2,r0,#0xff00	;From Master
 	cmp r2,#0xaa00
-	beq resetrequest	;$AAxx means other GBA wants to restart
+	beq resetrequest	;$AAxx means Master GBA wants to restart
 
-	ldrb r2,sending+2
-	cmp r2,#1
-	streq r0,received	;store only if we were expecting something
+	ldr r2,sending
+	tst r2,#0x10000
+	beq sio_err
+	strne r0,received0	;store only if we were expecting something
+	strne r1,received1	;store only if we were expecting something
+	eor r2,r2,r0		;Check if master sent what we expected
+	ands r2,r2,#0xff00
+	strne r0,received2	;otherwise print value.
+	strne r1,received3	;otherwise print value.
+
+;	mov r3,#AGB_PALETTE
+;	mov r1,#-1		;white
+;	strh r1,[r3]		;BG palette
 sio_err
-	strb r3,sending+2	;send completed
+	strb r3,sending+2	;send completed, r3b=0
 	bx lr
+
 resetrequest
-	ldr r1,joycfg
-	strh r0,received
-	orr r1,r1,#0x01000000
-	bic r1,r1,#0x08000000
-	str r1,joycfg
+;	mov r3,r1,asr#16
+;	cmp r3,#-1
+;	moveq r3,#3		;up to 3 players.
+;	movne r3,#4		;all 4 players
+;	cmp r1,#-1
+;	moveq r3,#2		;only 2 players.
+;	mov r3,#3
+;	str r3,nrplayers
+
+	ldr r2,joycfg
+	strh r0,received0
+	orr r2,r2,#0x01000000
+	bic r2,r2,#0x08000000
+	str r2,joycfg
 	bx lr
 
 sending DCD 0
-received DCD 0
+lastsent DCD 0
+received0 DCD 0
+received1 DCD 0
+received2 DCD 0
+received3 DCD 0
 ;---------------------------------------------
 xmit	;send byte in r0
-;returns REG_SIOCNT in r1, received byte in r2, lastsent in r3, Z set if successful, r4-r5 destroyed
+;returns REG_SIOCNT in r1, received P1/P2 in r2, received P3/P4 in r3, Z set if successful, r4-r5 destroyed
 ;---------------------------------------------
 	ldr r3,sending
 	tst r3,#0x10000		;last send completed?
@@ -383,35 +469,96 @@ xmit	;send byte in r0
 	mov r5,#REG_BASE
 	add r5,r5,#0x100
 	ldrh r1,[r5,#REG_SIOCNT]
-
 	tst r1,#0x80		;clear to send?
 	movne pc,lr
-
-	tst r1,#0x10		;master initiates send
-	orreq r1,r1,#0x80
 
 	ldrb r4,frame
 	eor r4,r4,#0x55
 	bic r4,r4,#0x80
 	orr r0,r0,r4,lsl#8	;r0=new data to send
 
-	ldr r2,received
-	eor r4,r2,r2,lsr#16
+	ldr r2,received0
+	ldr r3,received1
+	cmp r2,#-1		;Check for uninitialized
+	eoreq r2,r2,#0xf00
+	ldr r4,nrplayers
+	cmp r4,#2
+	beq players2
+	cmp r4,#3
+	beq players3
+players4
+	eor r4,r2,r3,lsr#16	;P1 & P4
 	tst r4,#0xff00		;not in sync yet?
-	movne r0,r3
+	beq players3
+	ldr r1,lastsent
+	eor r4,r1,r3,lsr#16	;Has P4 missed an interrupt?
+	tst r4,#0xff00
+	streq r1,sending	;Send the value before this.
+	b iofail
+players3
+	eor r4,r2,r3		;P1 & P3
+	tst r4,#0xff00		;not in sync yet?
+	beq players2
+	ldr r1,lastsent
+	eor r4,r1,r3		;Has P3 missed an interrupt?
+	tst r4,#0xff00
+	streq r1,sending	;Send the value before this.
+	b iofail
+players2
+	eor r4,r2,r2,lsr#16	;P1 & P2
+	tst r4,#0xff00		;in sync yet?
+	beq checkold
+	ldr r1,lastsent
+	eor r4,r1,r2,lsr#16	;Has P2 missed an interrupt?
+	tst r4,#0xff00
+	streq r1,sending	;Send the value before this.
+	b iofail
+checkold
+	ldr r4,sending
+	ldr r1,lastsent
+	eor r4,r4,r1		;Did we send an old value last time?
+	tst r4,#0xff00
+	bne iogood		;bne
+	ldr r1,sending
+	str r0,sending
+	str r1,lastsent
+iofail	orrs r4,r4,#1		;Z=0 fail
+	b notyet
+iogood	ands r4,r4,#0		;Z=1 ok
+notyet	ldr r1,sending
+	streq r1,lastsent
+	movne r0,r1		;resend last.
 
 	orr r0,r0,#0x10000
 	str r0,sending
-	strh r0,[r5,#0x2a]
-	strh r1,[r5,#REG_SIOCNT]	;send
+	strh r0,[r5,#REG_SIOMLT_SEND]	;put data in buffer
+	ldrh r1,[r5,#REG_SIOCNT]
+	tst r1,#0x4			;Check if we're Master.
+	bne endSIO
 
-	tst r4,#0xff00
+multip	ldrh r1,[r5,#REG_SIOCNT]
+	tst r1,#0x8			;Check if all machines are in multi mode.
+	beq multip
+
+	orr r1,r1,#0x80			;Set send bit
+	strh r1,[r5,#REG_SIOCNT]	;start send
+
+endSIO
+	teq r4,#0
 	mov pc,lr
 ;----------------------------------------------------------------------------
 resetSIO	;r0=joycfg
 ;----------------------------------------------------------------------------
 	bic r0,r0,#0x0f000000
 	str r0,joycfg
+
+	mov r2,#2		;only 2 players.
+	mov r1,r0,lsr#29
+	cmp r1,#0x6
+	moveq r2,#4		;all 4 players
+	cmp r1,#0x5
+	moveq r2,#3		;3 players.
+	str r2,nrplayers
 
 	mov r2,#REG_BASE
 	add r2,r2,#0x100
@@ -433,9 +580,29 @@ refreshNESjoypads	;call every frame
 ;i'm not trying to win any contests here.
 ;----------------------------------------------------------------------------
 	mov r6,lr		;return with this..
+
+;	ldr r0,received0
+;	mov r1,#4
+;	bl debug_
+;	ldr r0,received1
+;	mov r1,#5
+;	bl debug_
+;	ldr r0,received2
+;	mov r1,#7
+;	bl debug_
+;	ldr r0,received3
+;	mov r1,#8
+;	bl debug_
+;	ldr r0,sending
+;	mov r1,#10
+;	bl debug_
+;	ldr r0,lastsent
+;	mov r1,#11
+;	bl debug_
+
 		ldr r4,frame
 		movs r0,r4,lsr#2 ;C=frame&2 (autofire alternates every other frame)
-	ldr r1,AGBjoypad
+	ldr r1,NESjoypad
 	and r0,r1,#0xf0
 		ldr r2,joycfg
 		andcs r1,r1,r2
@@ -449,8 +616,16 @@ refreshNESjoypads	;call every frame
 	tst r2,#0x80000000
 	bne multi
 
-	tst r2,#0x40000000
-fin	streqb r0,joy0state
+;	tst r2,#0x40000000	; P3/P4
+;	beq no4scr
+;	tst r2,#0x20000000	; P3/P4
+;	streqb r0,joy2state
+;	strneb r0,joy3state
+;	ands r0,r0,#0		;Z=1
+;	mov pc,r6
+	
+no4scr	tst r2,#0x20000000
+	streqb r0,joy0state
 	strneb r0,joy1state
 	ands r0,r0,#0		;Z=1
 	mov pc,r6
@@ -461,20 +636,32 @@ multi				;r2=joycfg
 	bl xmit			;send joypad data for NEXT frame
 	movne pc,r6		;send was incomplete!
 
-	tst r1,#0x10		;we are master or slave?
-	strneb r2,joy0state		;master is player 1
-	streqb r2,joy1state		;slave is player 2
-	mov r0,r3
-	b fin
+	strb r2,joy0state		;master is player 1
+	mov r2,r2,lsr#16
+	strb r2,joy1state		;slave1 is player 2
+	ldr r4,nrplayers
+	cmp r4,#2
+	beq fin
+	strb r3,joy2state
+	mov r3,r3,asr#16
+	cmp r4,#3
+	strneb r3,joy3state
+fin	ands r0,r0,#0		;Z=1
+	mov pc,r6
+
 link_sync
+	mov r1,#0x8000
+	str r1,lastsent
 	tst r2,#0x03000000
 	beq stage0
 	tst r2,#0x02000000
 	beq stage1
 stage2
-	mov r0,#0
+	mov r0,#0x2200
 	bl xmit			;wait til other side is ready to go
 
+	moveq r1,#0x8000
+	streq r1,lastsent
 	ldr r2,joycfg
 	biceq r2,r2,#0x03000000
 	orreq r2,r2,#0x08000000
@@ -489,27 +676,28 @@ stage1		;other GBA wants to reset
 	str r2,joycfg
 
 	ldr r0,romnumber
-	tst r4,#0x10		;who are we?
+	tst r4,#0x4		;who are we?
 	beq sg1
-	ldrb r3,received	;slave uses master's timing flags
+	ldrb r3,received0	;slaves uses master's timing flags
 	bic r1,r1,#USEPPUHACK+NOCPUHACK+PALTIMING
 	orr r1,r1,r3
 sg1	bl loadcart		;game reset
 
 	mov r1,#0
 	str r1,sending		;reset sequence numbers
-	str r1,received
+	str r1,received0
+	str r1,received1
 badmonkey
 	orrs r0,r0,#1		;Z=0 (incomplete xfer)
 	mov pc,r6
 stage0	;self-initiated link reset
 	bl sendreset		;keep sending til we get a reply
 	b badmonkey
-sendreset	;exits with r1=hackflags, r4=REG_SIOCNT, Z=1 if send was OK
+sendreset       ;exits with r1=emuflags, r4=REG_SIOCNT, Z=1 if send was OK
 	mov r5,#REG_BASE
 	add r5,r5,#0x100
 
-	ldr r1,hackflags
+        ldr r1,emuflags
 	and r0,r1,#USEPPUHACK+NOCPUHACK+PALTIMING
 	orr r0,r0,#0xaa00		;$AAxx, xx=timing flags
 
@@ -522,12 +710,15 @@ sendreset	;exits with r1=hackflags, r4=REG_SIOCNT, Z=1 if send was OK
 	strh r4,[r5,#REG_SIOCNT]	;send!
 	mov pc,lr
 
-joycfg DCD 0x00ff01ff ;byte0=auto mask, byte1=(saves R), byte2=R auto mask
-;bit 31=single/multi, 30=1P/2P, 27=(multi) link active, 24=reset signal received
+joycfg DCD 0x40ff01ff ;byte0=auto mask, byte1=(saves R), byte2=R auto mask
+;bit 31=single/multi, 30,29=1P/2P, 27=(multi) link active, 24=reset signal received
 joy0state DCD 0
 joy1state DCD 0
+joy2state DCD 0
+joy3state DCD 0
 joy0serial DCD 0
 joy1serial DCD 0
+nrplayers DCD 0		;Number of players in multilink.
 dulr2rldu DCB 0x00,0x80,0x40,0xc0, 0x10,0x90,0x50,0xd0, 0x20,0xa0,0x60,0xe0, 0x30,0xb0,0x70,0xf0
 ;----------------------------------------------------------------------------
 joy0_W		;4016
@@ -535,21 +726,33 @@ joy0_W		;4016
 	tst r0,#1
 	movne pc,lr
 
+;	mov r2,#0xffffff00	;for normal joypads.
+	mov r2,#0x00080000	;4player adapter
 	ldr r0,joy0state
-	ldr r1,joy1state
+	ldr r1,joy2state
+	orr r0,r0,r1,lsl#8
+	orr r0,r0,r2
 	str r0,joy0serial
-	str r1,joy1serial
+
+;	mov r2,#0xffffff00	;for normal joypads.
+	mov r2,#0x00040000	;4player adapter
+	ldr r0,joy1state
+	ldr r1,joy3state
+	orr r0,r0,r1,lsl#8
+	orr r0,r0,r2
+	str r0,joy1serial
 	mov pc,lr
 ;----------------------------------------------------------------------------
 joy0_R		;4016
 ;----------------------------------------------------------------------------
 	ldr r0,joy0serial
-	mov r1,r0,lsr#1
+	mov r1,r0,asr#1
 	and r0,r0,#1
 	str r1,joy0serial
 
 	ldrb r1,cartflags
 	tst r1,#VS
+	orreq r0,r0,#0x40
 	moveq pc,lr
 
 	ldr r2,joy0state
@@ -561,7 +764,7 @@ joy0_R		;4016
 joy1_R		;4017
 ;----------------------------------------------------------------------------
 	ldr r0,joy1serial
-	mov r1,r0,lsr#1
+	mov r1,r0,asr#1
 	and r0,r0,#1
 	str r1,joy1serial
 
@@ -569,31 +772,5 @@ joy1_R		;4017
 	tst r1,#VS
 	orrne r0,r0,#0xf8	;VS dip switches
 	mov pc,lr
-;----------------------------------------------------------------------------
-suspend	;called from ui.c and 6502.s
-;-------------------------------------------------
-	stmfd sp!,{r0,r1,lr}
-	mov r3,#REG_BASE
-
-	ldr r1,=REG_P1CNT
-	ldr r0,=0xc00c			;interrupt on start+sel
-	strh r0,[r3,r1]
-
-	ldrh r1,[r3,#REG_SGCNT0_L]
-	strh r3,[r3,#REG_SGCNT0_L]	;sound off
-
-	ldrh r0,[r3,#REG_DISPCNT]
-	orr r0,r0,#0x80
-	strh r0,[r3,#REG_DISPCNT]	;LCD off
-
-	swi 0x030000
-
-	ldrh r0,[r3,#REG_DISPCNT]
-	bic r0,r0,#0x80
-	strh r0,[r3,#REG_DISPCNT]	;LCD on
-
-	strh r1,[r3,#REG_SGCNT0_L]	;sound on
-
-	ldmfd sp!,{r0,r1,pc}
-;--------------------------------------------------
+;----------------------------
 	END

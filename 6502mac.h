@@ -166,9 +166,9 @@ _type   SETA      _IMM
 _type   SETA      _ABS
         ldrb r0,[nes_pc],#1
         add r0,r0,nes_x
-	[ SAFETY
+;	[ SAFETY
         	and r0,r0,#0xff
-	]
+;	]
         ldrb addy,[r0,nes_zpage]!
         ldrb r1,[r0,#1]
         orr addy,addy,r1,lsl#8

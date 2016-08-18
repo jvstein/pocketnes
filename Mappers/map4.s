@@ -8,24 +8,22 @@
 	INCLUDE 6502mac.h
 
 	EXPORT mapper4init
+	EXPORT mapper64init
+	EXPORT MMC3_IRQ_Hook
 
 countdown EQU mapperdata+0
 latch EQU mapperdata+1
 irqen EQU mapperdata+2
-cmd EQU mapperdata+3
-bank0 EQU mapperdata+4
-bank1 EQU mapperdata+5
+rmode EQU mapperdata+3
+cmd EQU mapperdata+4
+bank0 EQU mapperdata+5
 ;----------------------------------------------------------------------------
+mapper64init
 mapper4init
 ;----------------------------------------------------------------------------
 	DCD write0,write1,write2,write3
 
-	mov r0,#0
-	strb r0,bank0
-	strb r0,bank1
-	strb r0,irqen
-
-	adr r0,hook
+	adr r0,MMC3_IRQ_Hook
 	str r0,scanlinehook
 
 	mov pc,lr
@@ -63,6 +61,7 @@ w8001
 	orrne r1,r1,#8
 	adr r2,commandlist
 	ldr pc,[r2,r1,lsl#2]
+
 cmd0			;0000-07ff
 	mov r0,r0,lsr#1
 	b chr01_
@@ -75,16 +74,11 @@ cmd0x			;1000-17ff
 cmd1x			;1800-1fff
 	mov r0,r0,lsr#1
 	b chr67_
-cmd6			;$8000/$A000 select
+cmd6			;$8000/$C000 select
 	strb r0,bank0
-	b romswitch
-cmd7			;$A000/$C000 select
-	strb r0,bank1
 ;- - - - - - - -
 romswitch
 	mov addy,lr
-	ldrb r0,bank1
-	bl mapAB_
 	mov r0,#-2
 	ldrb r1,cmd
 	tst r1,#0x40
@@ -92,13 +86,13 @@ romswitch
 
 	bl mapCD_
 	ldrb r0,bank0
-	bl map89_
-	mov pc,addy
+	mov lr,addy
+	b map89_
 rs0
 	bl map89_
 	ldrb r0,bank0
-	bl mapCD_
-	mov pc,addy
+	mov lr,addy
+	b mapCD_
 ;----------------------------------------------------------------------------
 write1		;$A000-A001
 ;----------------------------------------------------------------------------
@@ -120,14 +114,14 @@ write3		;E000-E001
 	strb r0,irqen
 	mov pc,lr
 ;----------------------------------------------------------------------------
-hook
+MMC3_IRQ_Hook
 ;----------------------------------------------------------------------------
 	ldrb r0,ppuctrl1
-	tst r0,#0x18		;no sprite/BG enable?
+	tst r0,#0x18		;no sprite/BG enable?  0x18
 	beq hk0			;bye..
 
 	ldr r0,scanline
-	cmp r0,#239		;not rendering?
+	cmp r0,#240		;not rendering?
 	bhi hk0			;bye..
 
 	ldrb r1,irqen
@@ -146,7 +140,7 @@ hook
 hk0
 	fetch 0
 ;----------------------------------------------------------------------------
-commandlist	DCD cmd0,cmd1,chr4_,chr5_,chr6_,chr7_,cmd6,cmd7
-		DCD cmd0x,cmd1x,chr0_,chr1_,chr2_,chr3_,cmd6,cmd7
+commandlist	DCD cmd0,cmd1,chr4_,chr5_,chr6_,chr7_,cmd6,mapAB_
+		DCD cmd0x,cmd1x,chr0_,chr1_,chr2_,chr3_,cmd6,mapAB_
 ;----------------------------------------------------------------------------
 	END

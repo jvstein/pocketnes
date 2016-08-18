@@ -109,7 +109,8 @@ giveup	bhi giveup
 	ldr r1,=REG_WSCNT
 	strh r0,[r1]		;3/1 wait state
 
-	b C_entry
+	ldr r1,=C_entry
+	bx r1
 ;----------------------------------------------------------
 font
 	INCBIN font.bin

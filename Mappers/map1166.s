@@ -25,6 +25,9 @@ mapper66init
 ;----------------------------------------------------------------------------
 	DCD write66,write66,write66,write66
 
+	adr r1,write66
+	str r1,writemem_tbl+12
+
 	ldrb r0,cartflags
 	orr r0,r0,#MIRROR	;???
 	strb r0,cartflags

@@ -1064,31 +1064,30 @@ run	;r0=0 to return after frame
 line0
 	adr r2,cpuregs
 	stmia r2,{nes_nz-nes_pc}	;save 6502 state
-
+waitformulti
 	ldr r1,=REG_P1		;refresh input every frame
 	ldrh r0,[r1]
 		eor r0,r0,#0xff
 		eor r0,r0,#0x300
 	ldr r1,AGBjoypad
 	eor r1,r1,r0
-	ands r1,r1,r0		;r1=button state (0->1)
+	and r1,r1,r0		;r1=button state (0->1)
 	str r0,AGBjoypad	;r0=button state (raw)
 
-	ldr r2,fiveminutes
-	movne r2,#0x4700
-	subs r2,r2,#1
-	str r2,fiveminutes
-	bleq suspend		;sleep after 5 minutes of inactivity
+	tst r1,#0x200		;L for BG adjust
+	ldrne r2,adjustblend
+	addne r2,r2,#1
+	strne r2,adjustblend
 
 	ldr r3,hackflags
 	tst r3,#NOSCALING
 	beq %F0
 	ldr r3,windowtop
-	tst r0,#0x100		;R scroll
+	tst r0,#0x100		;R=scroll down
 	addne r3,r3,#2
 	cmp r3,#79
 	movhi r3,#79
-	tst r0,#0x200		;L scroll
+	tst r0,#0x200		;L=scroll up
 	subnes r3,r3,#2
 	movmi r3,#0
 	str r3,windowtop
@@ -1097,18 +1096,25 @@ line0
 	cmp r2,#0
 	ldmeqfd sp!,{nes_nz-nes_pc,globalptr,nes_zpage,pc}	;exit here if doing single frame
 
-	tst r1,#0x200		;L for BG adjust
-	ldrne r2,adjustblend
-	addne r2,r2,#1
-	strne r2,adjustblend
-
-	tst r0,#0x100
-	tstne r0,#0x200		;L+R?
+	tst r1,#0x300		;if L or R pressed
+	tstne r0,#0x100
+	tstne r0,#0x200		;and both L+R held..
 	beq line0x
 	str r3,[sp,#-4]!
-	bl ui
+	bl ui				;go to menu
 	ldr r3,[sp],#4
 line0x
+	bl refreshNESjoypads
+	bne waitformulti	;waiting on other GBA..
+
+	ldr r0,AGBjoypad
+	ldr r2,fiveminutes	;sleep after 5 minutes of inactivity
+	cmp r0,#0		;(left out of the loop so waiting on multi-link
+	movne r2,#0x4700	;doesn't accelerate time)
+	subs r2,r2,#1
+	str r2,fiveminutes
+	bleq suspend
+
 	ldrb r0,ppuctrl0
 	strb r0,ppuctrl0frame		;Contra likes this
 
@@ -1119,28 +1125,14 @@ line0x
 	bl newframe		;display update
 
 	bl updatesound
-
- [ DEBUG
-	ldrb r0,agb_vbl
-	cmp r0,#0
-	beq l01
-	ldr r0,vblmiss
-	add r0,r0,#1		;count # of VBL misses
-	str r0,vblmiss
-	mov r1,#19
-	bl debug_
-	mov r1,#0
- ]
 l01
 	ldrb r0,agb_vbl		;wait for AGB VBL
 	cmp r0,#0
 	beq l01
-	mov r1,#0
-	strb r1,agb_vbl
-
+	mov r0,#0
+	strb r0,agb_vbl
  [ DEBUG
 	mov r1,#REG_BASE
-	mov r0,#0x0000
 	strh r0,[r1,#REG_BLDMOD]	;stop profiling shite
  ]
 	adr r0,cpuregs
@@ -1164,7 +1156,17 @@ line1_to_240 ;------------------------
 	streq addy,nexttimeout
 
 	ldr pc,scanlinehook
-line241 ;---------------------------
+line241 ;------------------------
+NMIDELAY EQU CYCLE*30
+	add cycles,cycles,#NMIDELAY	;NMI is delayed a few cycles..
+
+	mov r1,#0x80
+	strb r1,ppustat		;vbl flag
+
+	adr addy,line241NMI
+	str addy,nexttimeout
+	b default_scanlinehook
+line241NMI ;---------------------------
 	ldr r0,frame
 	add r0,r0,#1
 	str r0,frame
@@ -1175,12 +1177,9 @@ line241 ;---------------------------
 	mov r0,#0x0003
 	strh r0,[r1,#REG_COLY]
 	ldrh r0,[r1,#REG_VCOUNT]
-	mov r1,#18
+	mov r1,#19
 	bl debug_
  ]
-	mov r1,#0x80
-	strb r1,ppustat		;vbl flag
-
 	ldrb r0,ppuctrl0
 	tst r0,#0x80
 	beq %F0			;NMI?
@@ -1206,6 +1205,7 @@ line241 ;---------------------------
 0
 	ldr r0,cyclesperscanline
 	add cycles,cycles,r0
+	sub cycles,cycles,#NMIDELAY
 	adr r1,line242_to_end
 	str r1,nexttimeout
 
@@ -1259,9 +1259,6 @@ irq6502
 fiveminutes DCD 5*60*60
 dontstop DCD 0
 agb_vbl DCB 0		;nonzero when AGB enters vblank
- [ DEBUG
-vblmiss DCD 0
- ]
 ;----------------------------------------------------------------------------
 	AREA rom_code, CODE, READONLY
 
@@ -1275,9 +1272,8 @@ nes_reset	;called by loadcart (r0-r9 are free to use)
 ;---SRAM setup
 	ldr r0,hackflags
 	tst r0,#0xff000000		;use flash cart sram?
-	ldreq r1,=sram_W
 	ldrne r1,=sram_W2		;allow writes to cart sram
-	str r1,writemem_tbl+12
+	strne r1,writemem_tbl+12
 ;---NTSC/PAL
 	tst r0,#PALTIMING
 	ldreq r1,=341*CYCLE

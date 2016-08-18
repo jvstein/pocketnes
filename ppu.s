@@ -165,8 +165,8 @@ ppi0	mov r0,#0
 	add r2,r1,#REG_IE
 	mov r0,#-1
 	strh r0,[r2,#2]		;stop pending interrupts
-	ldr r0,=0x1011
-	strh r0,[r2]		;key,vblank,timer1 irq enable
+	ldr r0,=0x1091
+	strh r0,[r2]		;key,vblank,timer1,serial interrupt enable
 	mov r0,#1
 	strh r0,[r2,#8]		;master irq enable
 
@@ -200,16 +200,18 @@ irqhandler	;r0-r3,r12 are safe to use
 	and r1,r1,r1,lsr#16	;r1=IE&IF
 	;---
 	ands r0,r1,#0x10
-	bne timer1_irq
+	bne timer1interrupt
+	ands r0,r1,#0x80
+	bne serialinterrupt
 	ands r0,r1,#0x01
-	bne vblank_irq
+	bne vblankinterrupt
 	;----
 	strh r1,[r2,#2]		;IF clear
 	bx lr
 ;----------------------------------------------------------------------------
 twitch DCD 0
 returnhere DCD 0
-vblank_irq;
+vblankinterrupt;
 ;----------------------------------------------------------------------------
 	strh r0,[r2,#2]		;IF clear
 	strb r0,agb_vbl
@@ -218,7 +220,7 @@ vblank_irq;
 	swp r0,r0,[r1]
 	sub r0,r0,#4
 	str r0,returnhere
-	bx lr		;exit irq immediately so it doesn't fuck up sound irq timing
+	bx lr		;exit immediately so it doesn't fuck up sound interrupt timing
 exitirq ;- - - - - - - - - - - -
 	stmfd sp!,{r0-r7,globalptr,lr}
 	mrs lr,cpsr
@@ -840,8 +842,8 @@ db0
 	strh r1,[r2],#2
 	tst r2,#15
 	bne db0
-	mov pc,lr
  ]
+	mov pc,lr
 ;----------------------------------------------------------------------------
 
 vram_write_tbl	;for vmdata_W, r0=data, addy=vram addr
@@ -900,7 +902,7 @@ dmaoambuffer DCD OAM_BUFFER2	;triple buffered hell!!!
 	AREA wram_globals1, CODE, READWRITE
 
 AGBinput		;this label here for main.c to use
-	DCD 0 ;AGBjoypad (bits 0-7 flipped)
+	DCD 0 ;AGBjoypad
 	DCD 2 ;adjustblend
 wtop	DCD 0,0,0,0 ;windowtop  (this label too)   L/R scrolling in unscaled mode
 ppustate

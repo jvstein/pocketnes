@@ -16,26 +16,39 @@
 	IMPORT C_entry	;from main.c
 	IMPORT textstart
 
+	IMPORT max_multiboot_size ;from mbclient.c
+
 	EXPORT font
 	EXPORT fontpal
 ;------------------------------------------------------------
  	b __main
 
-	% 156			;logo
+	DCB 36,255,174,81,105,154,162,33,61,132,130,10,132,228,9,173
+	DCB 17,36,139,152,192,129,127,33,163,82,190,25,147,9,206,32
+	DCB 16,70,74,74,248,39,49,236,88,199,232,51,130,227,206,191
+	DCB 133,244,223,148,206,75,9,193,148,86,138,192,19,114,167,252
+	DCB 159,132,77,115,163,202,154,97,88,151,163,39,252,3,152,118
+	DCB 35,29,199,97,3,4,174,86,191,56,132,0,64,167,14,253
+	DCB 255,82,254,3,111,149,48,241,151,251,192,133,96,214,128,37
+	DCB 169,99,190,3,1,78,56,226,249,162,52,255,187,62,3,68
+	DCB 120,0,144,203,136,17,58,148,101,192,124,99,135,240,60,175
+	DCB 214,37,228,139,56,10,172,114,33,212,248,7
 	DCB "PocketNES   "	;title
 	DCB "PNES"		;gamecode
 	DCW 0			;maker
-	DCB 0x96		;?
+	DCB 0x96		;fixed value
 	DCB 0			;unit code
 	DCB 0			;device type
 	DCB 0,0,0,0,0,0,0	;unused
 	DCB 0			;version
-	DCB 0			;complement check
-	DCW 0			;checksum
-	% 32			;multiboot header
+	DCB 0x6f		;complement check
+	DCW 0			;unused
 ;----------------------------------------------------------
 __main
 ;----------------------------------------------------------
+	b %F0
+	% 28			;multiboot struct
+0
 	[ BUILD = "DEBUG"
 		mov r0, #0x10	;usr mode
 		msr cpsr_f, r0
@@ -44,7 +57,6 @@ __main
 	ldr	sp,=0x3007f00
 	LDR	r5,=|Image$$RO$$Limit| ;r5=pointer to IWRAM code
 
-	ldr r4,=textstart		;textstart=ptr to NES rom info
 	ldr r0,=|Image$$RO$$Limit|
  [ BUILD = "DEBUG"
 	ldr r1,=|zzzzz$$Base|
@@ -86,7 +98,12 @@ _1	CMP	r3, r1 ; Zero init
 	cmp r1,r0		;sanity check - make sure iwram code fits in iwram
 giveup	bhi giveup
  ]
-	str r6,[r4]		;textstart
+	ldr r4,=textstart	;textstart=ptr to NES rom info
+	str r6,[r4]
+
+	ldr r6,=(END_OF_EXRAM-0x2000000)	;how much free space is left?
+	ldr r4,=max_multiboot_size
+	str r6,[r4]
 
 	mov r0,#0x14
 	ldr r1,=REG_WSCNT

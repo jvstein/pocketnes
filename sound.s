@@ -1,7 +1,7 @@
 	INCLUDE equates.h
 	INCLUDE ppu.h
 
-	EXPORT timer1_irq
+	EXPORT timer1interrupt
 	EXPORT sound_reset_
 	EXPORT updatesound
 	EXPORT _4000w
@@ -85,14 +85,14 @@ sound_reset_
 trianglewav
 	DCB 0x76,0x54,0x32,0x10,0x01,0x23,0x45,0x67,0x89,0xAB,0xCD,0xEF,0xFE,0xDC,0xBA,0x98
 ;----------------------------------------------------------------------------
-timer1_irq
+timer1interrupt
 ;----------------------------------------------------------------------------
 	strh r0,[r2,#2]		;IF clear
 
 ;	mov r1,#REG_BASE
 ;	strh r1,[r1,#REG_DM2CNT_H]	;DMA stop
 ;	mov r0,   #0xb600
-;	orr r0,r0,#0x0040			;noIRQ fifo 32bit repeat incsrc fixeddst
+;	orr r0,r0,#0x0040			;noINTR fifo 32bit repeat incsrc fixeddst
 ;	strh r0,[r1,#REG_DM2CNT_H]	;DMA go
 
 ;	prep DMA buffer..

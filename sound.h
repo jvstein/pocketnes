@@ -1,5 +1,5 @@
 	IMPORT sound_reset_
-	IMPORT timer1_irq
+	IMPORT timer1interrupt
 	IMPORT updatesound
 	IMPORT _4000w
 	IMPORT _4001w

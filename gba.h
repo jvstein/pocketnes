@@ -5,9 +5,11 @@ typedef unsigned char u8;
 typedef unsigned short u16;
 typedef unsigned long u32;
 
-typedef signed char s8;
-typedef signed short s16;
-typedef signed long s32;
+typedef volatile unsigned char vu8;
+typedef volatile unsigned short vu16;
+typedef volatile unsigned long vu32;
+
+typedef void (*fptr)(void);
 
 #define NOSCALING 64	//hackflags (from equates.h)
 #define SCALESPRITES 128
@@ -15,11 +17,11 @@ typedef signed long s32;
 #define MEM_PALETTE (u16*)0x5000000
 #define MEM_VRAM (u16*)0x6000000
 #define MEM_OAM (u32*)0x7000000
-//#define MEM_IRQVECT *(u32*)0x3007FFC
 #define MEM_SRAM (u8*)0xe000000
+#define INTR_VECT *(u32*)0x3007FFC
 #define SCREENBASE (u16*)0x6003800
 
-#define REG_DISPCNT *(volatile u32*)0x4000000
+#define REG_DISPCNT *(vu32*)0x4000000
 #define MODE0 0
 #define MODE1 1
 #define MODE2 2
@@ -38,8 +40,8 @@ typedef signed long s32;
 #define WINDOW1_EN 0x4000
 #define OBJ_WINDOW_EN 0x8000
 
-#define REG_DISPSTAT *(volatile u16*)0x4000004
-#define SCANLINE *(volatile u8*)0x4000005
+#define REG_DISPSTAT *(vu16*)0x4000004
+#define SCANLINE *(vu8*)0x4000005
 #define VBLANK 1
 #define HBLANK 2
 #define VCOUNT_HIT 4
@@ -47,8 +49,14 @@ typedef signed long s32;
 #define H_IRQ 16
 #define VCOUNT_IRQ 32
 
+#define REG_BG0HOFS *(u16*)0x4000010
+#define REG_BG0VOFS *(u16*)0x4000012
+#define REG_BG1HOFS *(u16*)0x4000014
+#define REG_BG1VOFS *(u16*)0x4000016
 #define REG_BG2HOFS *(u16*)0x4000018
 #define REG_BG2VOFS *(u16*)0x400001a
+#define REG_BG0CNT *(u16*)0x4000008
+#define REG_BG1CNT *(u16*)0x400000a
 #define REG_BG2CNT *(u16*)0x400000c
 #define COLOR16 0x0000
 #define COLOR256 0x0080
@@ -59,39 +67,11 @@ typedef signed long s32;
 
 #define REG_VCOUNT *(volatile u16*)0x4000006
 
-#define REG_IE *(u16*)0x4000200
-#define V_IRQ_EN 1
-#define H_IRQ_EN 2
-#define VCOUNT_IRQ_EN 4
-#define TIMER0_IRQ_EN 8
-#define TIMER1_IRQ_EN 16
-#define TIMER2_IRQ_EN 32
-#define TIMER3_IRQ_EN 64
-#define SERIAL_IRQ_EN 128
-#define DMA0_IRQ_EN 0x100
-#define DMA1_IRQ_EN 0x200
-#define DMA2_IRQ_EN 0x400
-#define DMA3_IRQ_EN 0x800
-#define KEY_IRQ_EN 0x1000
-#define CART_IRQ_EN 0x2000
+#define REG_IE *(vu16*)0x4000200
+#define REG_IF *(vu16*)0x4000202
+#define REG_IME *(vu16*)0x4000208
 
-#define REG_IF *(volatile u16*)0x4000202
-#define V_IRQ_ACK 1
-#define H_IRQ_ACK 2
-#define VCOUNT_IRQ_ACK 4
-#define TIMER0_IRQ_ACK 8
-#define TIMER1_IRQ_ACK 16
-#define TIMER2_IRQ_ACK 32
-#define TIMER3_IRQ_ACK 64
-#define SERIAL_IRQ_ACK 128
-#define DMA0_IRQ_ACK 0x100
-#define DMA1_IRQ_ACK 0x200
-#define DMA2_IRQ_ACK 0x400
-#define DMA3_IRQ_ACK 0x800
-#define KEY_IRQ_ACK 0x1000
-#define CART_IRQ_ACK 0x2000
-
-#define REG_P1 *(volatile u16*)0x4000130
+#define REG_P1 *(vu16*)0x4000130
 #define A_BTN 1
 #define B_BTN 2
 #define SELECT 4
@@ -105,6 +85,7 @@ typedef signed long s32;
 
 #define REG_DM0CNT_H *(u16*)0x40000ba
 #define REG_DM1CNT_H *(u16*)0x40000c6
+#define REG_DM3CNT_H *(u16*)0x40000de
 #define REG_BLDMOD *(u16*)0x4000050
 #define REG_COLY *(u16*)0x4000054
 #define REG_SGCNT0_L *(u16*)0x4000080
@@ -115,5 +96,11 @@ typedef signed long s32;
 #define REG_BG2PB *(u16*)0x4000022
 #define REG_BG2PC *(u16*)0x4000024
 #define REG_BG2PD *(u16*)0x4000026
+
+#define REG_SIOMULTI0 *(vu16*)0x4000120
+#define REG_SIOMULTI1 *(vu16*)0x4000122
+#define REG_SIOCNT *(vu16*)0x4000128
+#define REG_SIOMLT_SEND *(vu16*)0x400012a
+#define REG_RCNT *(vu16*)0x4000134
 
 #endif

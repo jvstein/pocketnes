@@ -3,8 +3,15 @@
 #include "gba.h"
 #include "minilzo.107/minilzo.h"
 
-//#define HEAPBASE 0x2030000
-//#define HEAPSIZE 0x?
+#define NES_ID 0x1a53454e
+
+typedef struct {
+	char name[32];
+	u32 filesize;
+	u32 flags;
+	u32 spritenum;
+	u32 saveslot;
+} rominfo;
 
 extern u32 hflags;	//from cart.s
 extern u32 joycfg;	//from io.s
@@ -17,6 +24,7 @@ extern u32 AGBinput;	//from ppu.s
 void loadcart(int,int);	//from cart.s
 void run(int);
 void ppu_init(void);
+void resetSIO(u32);//io.s
 
 void rommenu(void);
 int drawmenu(void);
@@ -24,48 +32,34 @@ int getinput(void);
 int ines(u8 *p);
 void splash(void);
 void waitframe(void);
-
-/*
-void *__rt_embeddedalloc_init(void *base, unsigned int size);
-void *heapdescriptor;
-void *__rt_heapdescriptor(void) {
-	return heapdescriptor;
-}*/
+void drawtext(int,char*,int);
 
 const unsigned __fp_status_arm=0x40070000;
-int roms;//total # of roms (# of menu titles found)
-char *textstart;//where rom descriptions reside (initialized by boot.s)
-u8 *firstrom;//1st rom ptr
+int roms;//total number of roms
+u8 *textstart;//where rom descriptions reside (initialized by boot.s)
 
 void C_entry() {
-	char *str,*str2;
-
+	int i;
+	u8 *p;
 	REG_DISPCNT=FORCE_BLANK;	//screen OFF
-
-	//heapdescriptor=__rt_embeddedalloc_init((void*)HEAPBASE,HEAPSIZE);
 
 	lzo_init();	//init compression lib for savestates
 
-	//"#!" in menu indicates a splash screen is present
-	if(*(textstart+76800)=='#' && *(textstart+76801)=='!') {
+	//splash screen present?
+	if(*(u32*)(textstart+48)!=NES_ID) {
 		splash();
 		textstart+=76800;
 	}
 
 	ppu_init();
 
-	//count # of titles
-	roms=0;
-	while(*textstart<' ') textstart++;//kill stray CRs
-	str2=str=textstart;
-	while(!ines((u8*)str)) { //look for first NES header
-		str=strchr(str,'\n');
-		while(*str<' ') str++;
-		if(*str2!='#')
-			roms++;
-		str2=str;
+	i=0;
+	p=textstart;
+	while(*(u32*)(p+48)==NES_ID) {	//count roms
+		p+=*(u32*)(p+32)+48;
+		i++;
 	}
-	firstrom=(u8*)str;
+	roms=i;
 
 	//load font+palette
 	memcpy((void*)0x6002400,&font,16*8*32);
@@ -95,7 +89,7 @@ void splash() {
 		REG_COLY=i;
 		waitframe();
 	}
-	for(i=0;i<120;i++) {	//wait 2 seconds
+	for(i=0;i<150;i++) {	//wait 2.5 seconds
 		waitframe();
 	}
 	REG_BLDMOD=0xc4;	//(brightness decrease)
@@ -132,7 +126,7 @@ void rommenu(void) {
 	REG_BLDMOD=0;
 	REG_BG2CNT=0x0700;	//16color 256x256 CHRbase0 SCRbase7 Priority0
 	REG_DISPCNT=BG2_EN|OBJ_1D; //mode0, 1d sprites, main screen turn on
-        joycfg&=0x7fffffff;       //switch back to 1P
+        resetSIO(joycfg&~0xff000000);//back to 1P
 	do {
 		key=getinput();
 		if(key&UP)
@@ -158,56 +152,12 @@ void rommenu(void) {
 	run(1);
 }
 
-//advance str to next rom title
-void nexttitle(char **str) {
-	char *s=*str;
-	do {
-		s=strchr(s,'\n');
-		while(*s<' ') s++;
-	} while(*s=='#');
-	*str=s;
-}
-
-//check for iNES ID
-int ines(u8 *p) {
-	return (*p==0x4e && *(p+1)==0x45 && *(p+2)==0x53 && *(p+3)==0x1a);
-}
-
-//return ptr to Nth ROM (including NES header)
+//return ptr to Nth ROM (including rominfo struct)
 u8 *findrom(int n) {
-	u32 prgsize,chrsize;
-	u8 *p=firstrom;
-	while(n--) {
-		prgsize=*(p+4);
-		chrsize=*(p+5);
-		p=p+16+prgsize*16384+chrsize*8192;
-		if(!ines(p))
-			p+=128;
-		if(!ines(p))
-			return firstrom;
-	}
+	u8 *p=textstart;
+	while(n--)
+		p+=*(u32*)(p+32)+48;
 	return p;
-}
-
-//return ptr to rom title
-char *findname(int i) {
-	char *s=textstart;
-	if(i>roms-1)
-		return "?";
-	if(*s=='#') i++;//need this if first line is a comment
-	while(i--)
-		nexttitle(&s);
-	return s;
-}
-
-//parse rom info string.  copy title into dst, return rom options
-int readtitle(char *src,char *dst) {
-	int hackflags,spritenum,saveslot;
-	hackflags=spritenum=saveslot=0;
-	sscanf(src,"%29[^|\n]%*[^|\n]|%i|%i|%i\n",dst,&hackflags,&spritenum,&saveslot);
-	hackflags&=~(NOSCALING+SCALESPRITES);		//keep old scaling options..
-	hackflags|=hflags&(NOSCALING+SCALESPRITES);
-	return hackflags|(spritenum<<8)|(saveslot<<24);
 }
 
 void drawtext(int row,char *str,int hilite) {
@@ -227,9 +177,9 @@ void drawtext(int row,char *str,int hilite) {
 
 //returns options for selected rom
 int drawmenu() {
-	int i,j,topline,toprow,romflags,tmpflags;
-	char *s;
-	char title[30];
+	int i,j,topline,toprow,romflags;
+	u8 *p;
+	rominfo *ri;
 
 	if(roms>20) {
 		topline=8*(roms-20)*selectedrom/(roms-1);
@@ -239,13 +189,16 @@ int drawmenu() {
 		toprow=0;
 		j=roms;
 	}
-	s=findname(toprow);
+	p=findrom(toprow);
 	for(i=0;i<j;i++) {
-		tmpflags=readtitle(s,title);
-		nexttitle(&s);
-		drawtext(i,title,i==(selectedrom-toprow)?1:0);
-		if(i==selectedrom-toprow)
-			romflags=tmpflags;
+		drawtext(i,(char*)p,i==(selectedrom-toprow)?1:0);
+		if(i==selectedrom-toprow) {
+			ri=(rominfo*)p;
+			romflags=(*ri).flags|(*ri).spritenum<<8|(*ri).saveslot<<24;
+			romflags&=~(NOSCALING+SCALESPRITES);		//keep old scaling options..
+			romflags|=hflags&(NOSCALING+SCALESPRITES);
+		}
+		p+=*(u32*)(p+32)+48;
 	}
 	if(roms>20)
 		REG_BG2VOFS=topline%8;
@@ -269,6 +222,6 @@ int getinput() {
 		repeatcount=0;
 		lastupdown=updown;
 	}
-	AGBinput=0;	//disable game input
+	*(u8*)&AGBinput=0;	//disable game input (yeah, it's dumb.  don't want to mess with L/R buttons)
 	return updown|(keyhit&(A_BTN+B_BTN+START));
 }

@@ -4,4 +4,6 @@
 	IMPORT joypad_write_ptr
 	IMPORT joy0_W
 	IMPORT suspend
+	IMPORT refreshNESjoypads
+	IMPORT serialinterrupt
 	END

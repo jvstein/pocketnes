@@ -2,6 +2,8 @@
 	INCLUDE memory.h
 	INCLUDE ppu.h
 	INCLUDE sound.h
+	INCLUDE cart.h
+	INCLUDE 6502.h
 
 	IMPORT C_entry	;from main.c
 
@@ -13,6 +15,9 @@
 	EXPORT joycfg
 	EXPORT spriteinit
 	EXPORT suspend
+	EXPORT refreshNESjoypads
+	EXPORT serialinterrupt
+	EXPORT resetSIO
 
  AREA rom_code, CODE, READONLY ;-- - - - - - - - - - - - - - - - - - - - - -
 
@@ -332,13 +337,104 @@ dm13
 	str r0,[r2],#8
 	b dm14
 ;----------------------------------------------------------------------------
-joy0_W		;4016
+serialinterrupt
 ;----------------------------------------------------------------------------
-	tst r0,#1
+	strh r0,[r2,#2]		;IF clear
+
+	mov r3,#REG_BASE
+	add r3,r3,#0x100
+	ldrh r1,[r3,#REG_SIOCNT]
+
+	tst r1,#0x40		;communication error?
+	bne sio_err
+
+	ldr r0,[r3,#0x20]
+	tst r1,#0x10		;are we master or slave GBA?
+	moveq r0,r0,ror#16	;lower half=what they sent, upper half=what we sent
+
+	and r2,r0,#0xff00
+	cmp r2,#0xaa00
+	beq resetrequest	;$AAxx means other GBA wants to restart
+
+	ldrb r2,sending+2
+	cmp r2,#1
+	streq r0,received	;store only if we were expecting something
+sio_err
+	strb r3,sending+2	;send completed
+	bx lr
+resetrequest
+	ldr r1,joycfg
+	strh r0,received
+	orr r1,r1,#0x01000000
+	bic r1,r1,#0x08000000
+	str r1,joycfg
+	bx lr
+
+sending DCD 0
+received DCD 0
+;---------------------------------------------
+xmit	;send byte in r0
+;returns REG_SIOCNT in r1, received byte in r2, lastsent in r3, Z set if successful, r4-r5 destroyed
+;---------------------------------------------
+	ldr r3,sending
+	tst r3,#0x10000		;last send completed?
 	movne pc,lr
 
-		ldr r2,frame
-		movs r2,r2,lsr#2 ;C=frame&2 (autofire alternates every other frame)
+	mov r5,#REG_BASE
+	add r5,r5,#0x100
+	ldrh r1,[r5,#REG_SIOCNT]
+
+	tst r1,#0x80		;clear to send?
+	movne pc,lr
+
+	tst r1,#0x10		;master initiates send
+	orreq r1,r1,#0x80
+
+	ldrb r4,frame
+	eor r4,r4,#0x55
+	bic r4,r4,#0x80
+	orr r0,r0,r4,lsl#8	;r0=new data to send
+
+	ldr r2,received
+	eor r4,r2,r2,lsr#16
+	tst r4,#0xff00		;not in sync yet?
+	movne r0,r3
+
+	orr r0,r0,#0x10000
+	str r0,sending
+	strh r0,[r5,#0x2a]
+	strh r1,[r5,#REG_SIOCNT]	;send
+
+	tst r4,#0xff00
+	mov pc,lr
+;----------------------------------------------------------------------------
+resetSIO	;r0=joycfg
+;----------------------------------------------------------------------------
+	bic r0,r0,#0x0f000000
+	str r0,joycfg
+
+	mov r2,#REG_BASE
+	add r2,r2,#0x100
+
+	mov r1,#0
+	strh r1,[r2,#REG_RCNT]
+
+	tst r0,#0x80000000
+	moveq r1,#0x2000
+	movne r1,   #0x6000
+	addne r1,r1,#0x0002	;16bit multiplayer, 57600bps
+	strh r1,[r2,#REG_SIOCNT]
+
+	bx lr
+;----------------------------------------------------------------------------
+refreshNESjoypads	;call every frame
+;exits with Z flag clear if update incomplete (waiting for other player)
+;is my multiplayer code butt-ugly?  yes, I thought so.
+;i'm not trying to win any contests here.
+;----------------------------------------------------------------------------
+	mov r6,lr		;return with this..
+		ldr r4,frame
+		movs r0,r4,lsr#2 ;C=frame&2 (autofire alternates every other frame)
 	ldr r1,AGBjoypad
 	and r0,r1,#0xf0
 		ldr r2,joycfg
@@ -346,33 +442,117 @@ joy0_W		;4016
 		movcss addy,r1,lsr#9	;R?
 		andcs r1,r1,r2,lsr#16
 	adr addy,dulr2rldu
-	and r1,r1,#0x0f
-	ldrb r0,[addy,r0,lsr#4]
-	orr r1,r1,r0
+	and r1,r1,#0x0f		;selectstartAB
+	ldrb r0,[addy,r0,lsr#4]	;downupleftright
+	orr r0,r1,r0		;r0=joypad state
 
 	tst r2,#0x80000000
-	streq r1,joy0data
-	strne r1,joy1data
+	bne multi
 
+	tst r2,#0x40000000
+fin	streqb r0,joy0state
+	strneb r0,joy1state
+	ands r0,r0,#0		;Z=1
+	mov pc,r6
+multi				;r2=joycfg
+	tst r2,#0x08000000	;link active?
+	beq link_sync
+
+	bl xmit			;send joypad data for NEXT frame
+	movne pc,r6		;send was incomplete!
+
+	tst r1,#0x10		;we are master or slave?
+	strneb r2,joy0state		;master is player 1
+	streqb r2,joy1state		;slave is player 2
+	mov r0,r3
+	b fin
+link_sync
+	tst r2,#0x03000000
+	beq stage0
+	tst r2,#0x02000000
+	beq stage1
+stage2
+	mov r0,#0
+	bl xmit			;wait til other side is ready to go
+
+	ldr r2,joycfg
+	biceq r2,r2,#0x03000000
+	orreq r2,r2,#0x08000000
+	str r2,joycfg
+
+	b badmonkey
+stage1		;other GBA wants to reset
+	bl sendreset		;one last time..
+	bne badmonkey
+
+	orr r2,r2,#0x02000000	;on to stage 2..
+	str r2,joycfg
+
+	ldr r0,romnumber
+	tst r4,#0x10		;who are we?
+	beq sg1
+	ldrb r3,received	;slave uses master's timing flags
+	bic r1,r1,#USEPPUHACK+NOCPUHACK+PALTIMING
+	orr r1,r1,r3
+sg1	bl loadcart		;game reset
+
+	mov r1,#0
+	str r1,sending		;reset sequence numbers
+	str r1,received
+badmonkey
+	orrs r0,r0,#1		;Z=0 (incomplete xfer)
+	mov pc,r6
+stage0	;self-initiated link reset
+	bl sendreset		;keep sending til we get a reply
+	b badmonkey
+sendreset	;exits with r1=hackflags, r4=REG_SIOCNT, Z=1 if send was OK
+	mov r5,#REG_BASE
+	add r5,r5,#0x100
+
+	ldr r1,hackflags
+	and r0,r1,#USEPPUHACK+NOCPUHACK+PALTIMING
+	orr r0,r0,#0xaa00		;$AAxx, xx=timing flags
+
+	ldrh r4,[r5,#REG_SIOCNT]
+	tst r4,#0x80			;ok to send?
+	movne pc,lr
+
+	strh r0,[r5,#REG_SIOMLT_SEND]
+	orr r4,r4,#0x80
+	strh r4,[r5,#REG_SIOCNT]	;send!
 	mov pc,lr
 
-joycfg DCD 0x00ff01ff ;byte0=auto mask, byte1=(saves R), byte2=R auto mask, MSB=joy1/joy2
-joy0data DCD 0
-joy1data DCD 0
+joycfg DCD 0x00ff01ff ;byte0=auto mask, byte1=(saves R), byte2=R auto mask
+;bit 31=single/multi, 30=1P/2P, 27=(multi) link active, 24=reset signal received
+joy0state DCD 0
+joy1state DCD 0
+joy0serial DCD 0
+joy1serial DCD 0
 dulr2rldu DCB 0x00,0x80,0x40,0xc0, 0x10,0x90,0x50,0xd0, 0x20,0xa0,0x60,0xe0, 0x30,0xb0,0x70,0xf0
+;----------------------------------------------------------------------------
+joy0_W		;4016
+;----------------------------------------------------------------------------
+	tst r0,#1
+	movne pc,lr
+
+	ldr r0,joy0state
+	ldr r1,joy1state
+	str r0,joy0serial
+	str r1,joy1serial
+	mov pc,lr
 ;----------------------------------------------------------------------------
 joy0_R		;4016
 ;----------------------------------------------------------------------------
-	ldr r0,joy0data
+	ldr r0,joy0serial
 	mov r1,r0,lsr#1
 	and r0,r0,#1
-	str r1,joy0data
+	str r1,joy0serial
 
 	ldrb r1,cartflags
 	tst r1,#VS
 	moveq pc,lr
 
-	ldr r2,AGBjoypad
+	ldr r2,joy0state
 	tst r2,#8		;start=coin (VS)
 	orrne r0,r0,#0x40
 
@@ -380,14 +560,14 @@ joy0_R		;4016
 ;----------------------------------------------------------------------------
 joy1_R		;4017
 ;----------------------------------------------------------------------------
-	ldr r0,joy1data
+	ldr r0,joy1serial
 	mov r1,r0,lsr#1
 	and r0,r0,#1
-	str r1,joy1data
+	str r1,joy1serial
 
 	ldrb r1,cartflags
 	tst r1,#VS
-	orrne r0,r0,#0xf8		;VS switches
+	orrne r0,r0,#0xf8	;VS dip switches
 	mov pc,lr
 ;----------------------------------------------------------------------------
 suspend	;called from ui.c and 6502.s
@@ -407,7 +587,7 @@ suspend	;called from ui.c and 6502.s
 	strh r0,[r3,#REG_DISPCNT]	;LCD off
 
 	swi 0x030000
-	
+
 	ldrh r0,[r3,#REG_DISPCNT]
 	bic r0,r0,#0x80
 	strh r0,[r3,#REG_DISPCNT]	;LCD on

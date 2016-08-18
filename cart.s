@@ -56,6 +56,8 @@ mappertbl
 	DCD 7,mapper7init
 	DCD 9,mapper9init
 	DCD 11,mapper11init
+	DCD 16,mapper16init
+	DCD 17,mapper17init
 	DCD 21,mapper21init
 	DCD 25,mapper25init
 	DCD 66,mapper66init
@@ -79,7 +81,8 @@ loadcart ;called from C:  r0=rom number, r1=hackflags
 ;----------------------------------------------------------------------------
 	stmfd sp!,{r0-r1,r4-r11,lr}
 
-	bl findrom		;r0 now points to rom image (including header)
+	bl findrom		
+	add r0,r0,#48		;r0 now points to rom image (including header)
 
 	ldr globalptr,=|wram_globals0$$Base|	;need ptr regs init'd
 	ldr nes_zpage,=NES_RAM
@@ -202,6 +205,11 @@ lc3
 	ldr r0,=joy0_W
 	ldr r1,=joypad_write_ptr
 	str r0,[r1]		;reset 4016 write (mapper99 messes with it)
+
+	ldr r1,=IO_W		;reset other writes..
+	str r1,writemem_tbl+8
+	ldr r1,=sram_W
+	str r1,writemem_tbl+12
 
 	mov nes_pc,#0	;(eliminates any encodePC errors during mapper*init)
 	str nes_pc,lastbank
@@ -745,26 +753,26 @@ chrfinish	;end of frame...  finish up BGxCNTBUFF
 
  [ DEBUG
  ldr r0,agb_bg_map
-	mov r1,#3
+	mov r1,#0
 	bl debug_
  ldr r0,agb_bg_map+4
-	mov r1,#4
+	mov r1,#1
 	bl debug_
  ldr r0,agb_bg_map+8
-	mov r1,#5
+	mov r1,#2
 	bl debug_
  ldr r0,agb_bg_map+12
-	mov r1,#6
+	mov r1,#3
 	bl debug_
  ldr r0,bg_recent
-	mov r1,#7
+	mov r1,#4
 	bl debug_
 
  ldr r0,nes_chr_map
-	mov r1,#9
+	mov r1,#5
 	bl debug_
  ldr r0,nes_chr_map+4
-	mov r1,#10
+	mov r1,#6
 	bl debug_
  ]
 
@@ -876,7 +884,7 @@ bg2	tst bankptr,#3
 	bne bg0
  [ DEBUG
 	ldr r0,misscount
-	mov r1,#17
+	mov r1,#18
 	b debug_
 misscount DCD 0
  |
@@ -905,8 +913,8 @@ cached;--------------move to the top of the list:
  [ BUILD = "DEBUG"
  AREA zzzzz, DATA, READWRITE ;MUST be last area
 
-	;INCBIN smb.nes
-	DCB "NES",0x1a
+	DCB "0123456789abcdef"
+	% 32
  ]
 ;----------------------------------------------------------------------------
  AREA wram_globals2, CODE, READWRITE

@@ -15,7 +15,7 @@ irqen EQU mapperdata+1
 counter EQU mapperdata+3
 chr_xx EQU mapperdata+4 ;16 bytes
 ;----------------------------------------------------------------------------
-mapper21init	;gradius 2, waiwai world 2..
+mapper21init	;gradius 2, wai wai world 2..
 mapper25init
 ;----------------------------------------------------------------------------
 	DCD write8000,writeA000,writeC000,writeE000

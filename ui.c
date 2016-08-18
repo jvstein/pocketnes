@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+
 #include "gba.h"
 #include "minilzo.107/minilzo.h"
 
@@ -7,22 +8,24 @@
 
 extern u8 Image$$RO$$Limit;
 
-//header files?  BAH! who needs em
+//header files?  who needs 'em :P
 
 void cls(void);		//from main.c
 void rommenu(void);
 void drawtext(int,char*,int);
+void waitframe(void);
 u8 *findrom(int);
-char *findname(int);
-int readtitle(char *src,char *dst);
 extern char *textstart;
 extern int roms;
+
+int SendMBImageToClient(void);	//mbclient.c
 
 void debug_(int,int);	//from ppu.s
 int savestate(void*);	//from cart.s
 void loadstate(int,void*);	//this too..
 void spriteinit(int);	//io.s
 void suspend(void);	//io.s
+void resetSIO(u32);	//io.s
 
 extern u32 joycfg;	//from io.s
 extern u32 hflags;	//from cart.s
@@ -40,27 +43,26 @@ void display(void);
 void loadstatemenu(void);
 void savestatemenu(void);
 void restart(void);
+void multiboot(void);
 void drawshit(void);
 u8 *drawstates(int);
 void updatestates(int,int);
-void p1p2(void);
+void controller(void);
 void sleep(void);
 
-typedef void (*fptr)(void);
-fptr fnlist[]={autoBset,autoAset,p1p2,display,savestatemenu,loadstatemenu,sleep,restart};
-fptr multifnlist[]={autoBset,autoAset,p1p2,display,sleep,restart};
+fptr fnlist[]={autoBset,autoAset,controller,display,multiboot,savestatemenu,loadstatemenu,sleep,restart};
+fptr multifnlist[]={autoBset,autoAset,controller,display,multiboot,sleep,restart};
 
 int selected;//selected menuitem.  used by all menus.
-#define CARTMENUITEMS 8 //mainmenuitems when running from cart (not multiboot)
-int mainmenuitems;//6 or CARTMENUITEMS, depending on whether saving is allowed
+#define CARTMENUITEMS 9 //mainmenuitems when running from cart (not multiboot)
+int mainmenuitems;//? or CARTMENUITEMS, depending on whether saving is allowed
 
 u32 oldkey;//init this before using getmenuinput
 u32 getmenuinput(int menuitems) {
 	u32 keyhit;
 	u32 tmp;
 
-	while(REG_VCOUNT>=160) {};	//wait a while
-	while(REG_VCOUNT<160) {};	//(polling REG_P1 too fast seems to cause problems)
+	waitframe();		//(polling REG_P1 too fast seems to cause problems)
 	tmp=~REG_P1;
 	keyhit=(oldkey^tmp)&tmp;
 	oldkey=tmp;
@@ -69,12 +71,12 @@ u32 getmenuinput(int menuitems) {
 	if(keyhit&DOWN)
 		selected=(selected+1)%menuitems;
 	if((oldkey&(L_BTN+R_BTN))!=L_BTN+R_BTN)
-		keyhit|=R_BTN;		//flag L+R not held
+		keyhit&=~(L_BTN+R_BTN);
 	return keyhit;
 }
 
 void ui() {
-	int key,soundvol;
+	int key,soundvol,oldsel;
 
 	autoA=joycfg&A_BTN?0:1;
 	autoA|=joycfg&(A_BTN<<16)?0:2;
@@ -87,7 +89,7 @@ void ui() {
 	else
 		scaling=1;
 
-	mainmenuitems=((u32)textstart>0x8000000?CARTMENUITEMS:6);//running from rom or multiboot?
+	mainmenuitems=((u32)textstart>0x8000000?CARTMENUITEMS:CARTMENUITEMS-2);//running from rom or multiboot?
 
 	REG_BLDMOD=0x00f3;	//darken screen
 	REG_COLY=0x0006;
@@ -100,15 +102,17 @@ void ui() {
 	drawshit();
 	do {
 		key=getmenuinput(mainmenuitems);
-		if(key&(A_BTN+B_BTN)) {
+		if(key&(A_BTN)) {
+			oldsel=selected;
 			if(mainmenuitems<CARTMENUITEMS)
 				multifnlist[selected]();
 			else
 				fnlist[selected]();
+			selected=oldsel;
 		}
-		if(key&(A_BTN+B_BTN+UP+DOWN))
+		if(key&(A_BTN+UP+DOWN))
 			drawshit();
-	} while(!(key&R_BTN));
+	} while(!(key&(B_BTN+R_BTN+L_BTN)));
 	REG_BLDMOD=0;	//no dark
 	REG_SGCNT0_L=soundvol;	//resume sound
 	cls();
@@ -118,29 +122,32 @@ void text(int row,char *str) {
 	drawtext(row+10-mainmenuitems/2,str,selected==row);
 }
 
+char *ctrltxt[]={"1P","2P","Link"};
 char *autotxt[]={"OFF","ON","with R"};
 char *disptxt[]={"SCALED (BG+SPR)","SCALED (BG)","UNSCALED"};
 void drawshit() {
 	char str[30];
 
 	cls();
-	drawtext(19,"                PocketNES v7",0);
+	drawtext(19,"               PocketNES v7a",0);
 	sprintf(str,"B autofire: %s",autotxt[autoB]);
 	text(0,str);
 	sprintf(str,"A autofire: %s",autotxt[autoA]);
 	text(1,str);
-	sprintf(str,"Controller: %iP",(joycfg>>31)+1);
+	sprintf(str,"Controller: %s",ctrltxt[joycfg>>30]);
 	text(2,str);
 	sprintf(str,"Display: %s",disptxt[scaling]);
 	text(3,str);
 	if(mainmenuitems<CARTMENUITEMS) {
-		text(4,"Sleep");
-		text(5,"Restart");
+		text(4,"Link Transfer");
+		text(5,"Sleep");
+		text(6,"Restart");
 	} else {
-		text(4,"Save State");
-		text(5,"Load State");
-		text(6,"Sleep");
-		text(7,"Restart");
+		text(4,"Link Transfer");
+		text(5,"Save State");
+		text(6,"Load State");
+		text(7,"Sleep");
+		text(8,"Restart");
 	}
 }
 
@@ -166,8 +173,11 @@ void autoBset() {
 		autoB=0;
 }
 
-void p1p2() {
-	joycfg^=0x80000000;
+void controller() {		//see io.s: refreshNESjoypads
+	u32 i=joycfg+0x40000000;
+	if(i>=0xc0000000)
+		i&=~0xc0000000;
+	resetSIO(i);		//reset link state
 }
 
 void display() {
@@ -181,6 +191,22 @@ void display() {
 		hflags|=NOSCALING;
 	}
 	spriteinit(hflags);
+}
+
+void multiboot() {
+	int i;
+	cls();
+	drawtext(9,"          Sending...",0);
+	i=SendMBImageToClient();
+	if(i) {
+		if(i<3)
+			drawtext(9,"         Link error.",0);
+		else
+			drawtext(9,"  Game is too big to send.",0);
+		if(i==2) drawtext(10,"      (Reverse cable?)",0);
+		for(i=0;i<90;i++)		//wait a while
+			waitframe();
+	}
 }
 
 void restart() {
@@ -261,7 +287,7 @@ void savestatemenu() {
 	p++;
 	*p=checksum((u8*)romstart);	//checksum
 	p++;
-	readtitle(findname(romnum),(char*)p);
+	strcpy((char*)p,(char*)findrom(romnum));
 
 	getsram();
 
@@ -275,14 +301,13 @@ void savestatemenu() {
 	drawstates(1);
 	do {
 		i=getmenuinput(states+(states<=MAXSTATES));
-		if(i&(A_BTN+B_BTN))
+		if(i&(A_BTN))
 			updatestates(selected,0);
 		if((i&SELECT) && selected<states)
 			updatestates(selected,1);
 		if(i&(SELECT+UP+DOWN))
 			drawstates(1);
-	} while(!(i&(R_BTN+A_BTN+B_BTN)));
-	selected=0;
+	} while(!(i&(L_BTN+R_BTN+A_BTN+B_BTN)));
 }
 
 void loadstatemenu() {
@@ -304,11 +329,11 @@ void loadstatemenu() {
 		return;		//nothing to load!
 	do {
 		key=getmenuinput(states);
-		if(key&(A_BTN+B_BTN)) {
+		if(key&(A_BTN)) {
 			sum=*(p+CHECKSUM);
 			i=0;
 			do {
-				if(sum==checksum(findrom(i)+16)) {
+				if(sum==checksum(findrom(i)+64)) {
 					statesize=*(p+COMPRESSEDDATASIZE);
 					lzo1x_decompress((u8*)(p+STATEHEADERSIZE/4),statesize,BUFFER2,&statesize,NULL);
 					loadstate(i,BUFFER2);
@@ -321,13 +346,12 @@ void loadstatemenu() {
 				cls();
 				drawtext(9,"       ROM not found.",0);
 				for(i=0;i<60;i++)	//(1 second wait)
-					getmenuinput(1);
+					waitframe();
 			}
 		}
 		if(key&(UP+DOWN))
 			p=(u32*)drawstates(0);
-	} while(!(key&(R_BTN+A_BTN+B_BTN)));
-	selected=0;
+	} while(!(key&(L_BTN+R_BTN+A_BTN+B_BTN)));
 }
 
 //overwrite state:  index=state#, erase=0
@@ -355,8 +379,8 @@ void updatestates(int index,int erase) {
 			cls();
 			drawtext(9,"       Memory full!!",0);
 			drawtext(10,"     Delete some games",0);
-			for(j=0;j<60;j++)	//(1 second wait)
-				getmenuinput(1);
+			for(j=0;j<90;j++)
+				waitframe();
 			return;
 		}
 		memcpy(dst,BUFFER3,i);	//overwrite

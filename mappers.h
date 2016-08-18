@@ -6,6 +6,8 @@
 	IMPORT mapper7init
 	IMPORT mapper9init
 	IMPORT mapper11init
+	IMPORT mapper16init
+	IMPORT mapper17init
 	IMPORT mapper21init
 	IMPORT mapper25init
 	IMPORT mapper66init

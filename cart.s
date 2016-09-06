@@ -314,6 +314,7 @@ loadcart_asm ;called from C
 lc2
 	mov m6502_pc,#0		;(eliminates any encodePC errors during mapper*init)
 	str m6502_pc,lastbank
+	adr m6502_mmap,memmap_tbl
 
 	mov r0,#0			;default ROM mapping
 	bl_long map89AB_			;89AB=1st 16k
@@ -335,13 +336,13 @@ lc2
 	ldr r0,=empty_io_w_hook
 	str r1,[r0]
 	ldr r1,=IO_R			;reset other writes..
-	str r1,readmem_tbl+8
+	str r1,readmem_tbl-8
 	ldr r1,=sram_R			;reset other writes..
-	str r1,readmem_tbl+12
+	str r1,readmem_tbl-12
 	ldr r1,=IO_W			;reset other writes..
-	str r1,writemem_tbl+8
+	str r1,writemem_tbl-8
 	ldr r1,=sram_W
-	str r1,writemem_tbl+12
+	str r1,writemem_tbl-12
 	ldr r1,=NES_RAM-0x5800	;$6000 for mapper 40, 69 & 90 that has rom here.
 	str r1,memmap_tbl+12
 
@@ -368,10 +369,14 @@ lc1				;call mapper*init
 	add r1,r5,r1,lsl#2
 	
 	adr lr,%F0
-	adr r5,writemem_tbl+16
+	adr r5,writemem_tbl-16
 	ldr r0,[r1,#-4]
 	ldmia r0!,{r1-r4}
-	stmia r5,{r1-r4}
+	str r1,[r5],#-4
+	str r2,[r5],#-4
+	str r3,[r5],#-4
+	str r4,[r5],#-4
+	adr m6502_mmap,memmap_tbl ;r4 gets clobbered, reset it here
 	mov pc,r0			;Jump to MapperInit
 0
 	ldrb r1,cartflags
@@ -629,12 +634,12 @@ lc3
 
 	ldrpl r1,=rom_R60			;Swap in ROM at $6000-$7FFF.
 	ldrmi r1,=sram_R		;Swap in sram at $6000-$7FFF.
-	str r1,readmem_tbl+12
+	str r1,readmem_tbl-12
 	ldrpl r1,=empty_W		;ROM.
 	ldrmi r1,=sram_W		;sram.
-	str r1,writemem_tbl+12
+	str r1,writemem_tbl-12
 	ldrmi r1,=NES_RAM-0x5800		;sram at $6000.
-	strmi r1,memmap_tbl+12
+	strmi r1,memmap_tbl-12
 	blpl_long map67_
 
 

@@ -8,4 +8,5 @@
 	IMPORT suspend
 	IMPORT refreshNESjoypads
 	IMPORT empty_io_w_hook
+	IMPORT spriteinit
 	END

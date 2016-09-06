@@ -19,7 +19,7 @@ mapper17init
 	DCD void,void,void,void
 
 	adr r1,write0
-	str r1,writemem_tbl+8
+	str r1,writemem_tbl-8
 
 	adr r0,mapper_17_hook
 	str r0,scanlinehook

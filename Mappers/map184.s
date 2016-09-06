@@ -13,7 +13,7 @@ mapper184init
 	DCD write184,write184,write184,write184
 
 	adr r0,write184
-	str r0,writemem_tbl+12
+	str r0,writemem_tbl-12
 	mov pc,lr
 ;-------------------------------------------------------
 write184

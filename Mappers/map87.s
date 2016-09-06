@@ -13,7 +13,7 @@ mapper87init	;Konami - City Connection, Goonies...
 	DCD write87,write87,write87,write87
 
 	adr r1,write87
-	str r1,writemem_tbl+12
+	str r1,writemem_tbl-12
 
 	mov pc,lr
 ;-------------------------------------------------------

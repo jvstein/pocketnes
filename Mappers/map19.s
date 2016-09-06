@@ -19,10 +19,10 @@ mapper19init
 	DCD map19_8,map19_A,map19_C,map19_E
 
 	adr r1,write0
-	str r1,writemem_tbl+8
+	str r1,writemem_tbl-8
 
 	adr r1,map19_r
-	str r1,readmem_tbl+8
+	str r1,readmem_tbl-8
 
 
 	adr r0,mapper_19_hook

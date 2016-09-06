@@ -12,7 +12,7 @@ mapper86init	;Jaleco - Moero!! Pro Yakyuu, Urusei Yatsura...
 ;----------------------------------------------------------------------------
 	DCD void,void,void,void
 	adr r1,write86
-	str r1,writemem_tbl+12
+	str r1,writemem_tbl-12
 	mov r0,#0
 	b_long map89ABCDEF_
 ;-------------------------------------------------------

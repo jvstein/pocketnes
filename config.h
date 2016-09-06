@@ -2,7 +2,7 @@
 #define __CONFIG_H__
 
 //#define VERSION_NUMBER "X alpha 3"
-#define VERSION_NUMBER "7-31-08"
+#define VERSION_NUMBER "11-10-08"
 //#define VERSION_NUMBER "DO NOT RELEASE"
 
 #if defined COMPY

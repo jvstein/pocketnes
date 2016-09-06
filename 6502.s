@@ -545,9 +545,8 @@ _6A;   ROR
 _6C;   JMP ($nnnn)
 ;----------------------------------------------------------------------------
 	doABS
-	adr r1,memmap_tbl
 	and r2,addy,#0xE000
-	ldr r1,[r1,r2,lsr#11]
+	ldr r1,[m6502_mmap,r2,lsr#11]
 	ldrb m6502_pc,[r1,addy]!
 	[ HAPPY_CPU_TESTER
 	;wrap fix to make CPU testers happy
@@ -883,7 +882,7 @@ _B8;   CLV
 ;----------------------------------------------------------------------------
 _B9;   LDA $nnnn,Y
 ;----------------------------------------------------------------------------
-	doAIY
+	doAIY_ACCURATE  ;for Battletoads
 	opLOAD m6502_a
 	fetch 4
 ;----------------------------------------------------------------------------
@@ -896,19 +895,19 @@ _BA;   TSX
 ;----------------------------------------------------------------------------
 _BC;   LDY $nnnn,X
 ;----------------------------------------------------------------------------
-	doAIX
+	doAIX_ACCURATE  ;for Battletoads
 	opLOAD m6502_y
 	fetch 4
 ;----------------------------------------------------------------------------
 _BD;   LDA $nnnn,X
 ;----------------------------------------------------------------------------
-	doAIX
+	doAIX_ACCURATE
 	opLOAD m6502_a
 	fetch 4
 ;----------------------------------------------------------------------------
 _BE;   LDX $nnnn,Y
 ;----------------------------------------------------------------------------
-	doAIY
+	doAIY_ACCURATE
 	opLOAD m6502_x
 	fetch 4
 ;----------------------------------------------------------------------------
@@ -1321,7 +1320,7 @@ waitformulti
 	tst r0,#0x100				;R=scroll down
 	addne r3,r3,#2
 	cmp r3,#80
-	movhi r3,#80
+	movgt r3,#80
 	tst r0,#0x200				;L=scroll up
 	subnes r3,r3,#2
 	movmi r3,#0
@@ -2097,7 +2096,7 @@ CPU_reset	;called by loadcart (r0-r9 are free to use)
 	ldrb r0,cartflags
 	tst r0,#SRAM			;use sram?
 	ldrne r1,=sram_W2			;write to cart sram
-	strne r1,writemem_tbl+12
+	strne r1,writemem_tbl-12
 	]
 ;---NTSC/PAL
 	bl ntsc_pal_reset
@@ -2108,7 +2107,7 @@ CPU_reset	;called by loadcart (r0-r9 are free to use)
 	mov m6502_x,#0
 	mov m6502_y,#0
 	mov m6502_nz,#0
-	adr m6502_rmem,readmem_tbl
+	adr m6502_mmap,memmap_tbl
 	ldr r0,=NES_RAM+0x100
 	str r0,m6502_s		;S=0xFD (0x100-3)
 	mov cycles,#0		;D=0, C=0, V=0, I=1 disable IRQ.
@@ -2130,6 +2129,43 @@ CPU_reset	;called by loadcart (r0-r9 are free to use)
 	ldr pc,[sp],#4
 ;----------------------------------------------------------
 	AREA wram_globals0, CODE, READWRITE
+
+g_writemem_tbl_base
+	DCD ram_W	;$0000
+	DCD void	;$E000
+	DCD void	;$C000
+	DCD void	;$A000
+	DCD void	;$8000
+	DCD sram_W	;$6000
+	DCD IO_W	;$4000
+	DCD PPU_W	;$2000
+g_writemem_tbl
+	DCD ram_W	;$0000
+g_memmap_tbl
+   ;memmap_tbl
+	DCD NES_RAM		;$0000   0000-7fff
+	DCD NES_RAM		;$2000    should
+	DCD NES_RAM		;$4000     never
+	DCD NES_RAM-0x5800	;$6000      change
+rommap	% 4*4			;$8000-FFFF
+
+
+  ;readmem_tbl 
+	EXPORT g_readmem_tbl_base
+g_readmem_tbl_base
+	DCD ram_R	;$0000	appears twice because adding X or Y to addy may overflow
+	DCD rom_RE0	;$E000
+	DCD rom_RC0	;$C000
+	DCD rom_RA0	;$A000
+	DCD rom_R80	;$8000
+	DCD sram_R	;$6000
+	DCD IO_R	;$4000
+	DCD PPU_R	;$2000
+	EXPORT g_readmem_tbl
+g_readmem_tbl
+	DCD ram_R	;$0000
+
+
 GLOBAL_PTR_BASE
 op_table
 ;	DCD _00,_01,_xx,_xx,_x3,_05,_06,_07,_08,_09,_0A,_xx,_xx,_0D,_0E,_0F
@@ -2150,34 +2186,6 @@ op_table
 	DCD _D0,_D1,_xx,_xx,_x4,_D5,_D6,_xx,_D8,_D9,_xx,_xx,_xx,_DD,_DE,_xx
 	DCD _E0,_E1,_x2,_xx,_E4,_E5,_E6,_xx,_E8,_E9,_EA,_xx,_EC,_ED,_EE,_xx
 	DCD _F0,_F1,_xx,_xx,_x4,_F5,_F6,_xx,_F8,_F9,_xx,_xx,_xx,_FD,_FE,_xx
-	EXPORT g_readmem_tbl
-g_readmem_tbl
-  ;readmem_tbl
-	DCD ram_R	;$0000
-	DCD PPU_R	;$2000
-	DCD IO_R	;$4000
-	DCD sram_R	;$6000
-	DCD rom_R80	;$8000
-	DCD rom_RA0	;$A000
-	DCD rom_RC0	;$C000
-	DCD rom_RE0	;$E000
-g_writemem_tbl
-  ;writemem_tbl
-	DCD ram_W	;$0000
-	DCD PPU_W	;$2000
-	DCD IO_W	;$4000
-	DCD sram_W	;$6000
-	DCD void	;$8000
-	DCD void	;$A000
-	DCD void	;$C000
-	DCD void	;$E000
-g_memmap_tbl
-   ;memmap_tbl
-	DCD NES_RAM		;$0000   0000-7fff
-	DCD NES_RAM		;$2000    should
-	DCD NES_RAM		;$4000     never
-	DCD NES_RAM-0x5800	;$6000      change
-rommap	% 4*4			;$8000-FFFF
 
 cpustate
 	;group these together for save/loadstate

@@ -22,9 +22,9 @@ mapper40init		;SMB2j
 	str r0,scanlinehook
 
 	ldr r0,=rom_R60			;Set ROM at $6000-$7FFF.
-	str r0,readmem_tbl+12
+	str r0,readmem_tbl-12
 	ldr r0,=empty_W			;ROM.
-	str r0,writemem_tbl+12
+	str r0,writemem_tbl-12
 
 	bl write0
 

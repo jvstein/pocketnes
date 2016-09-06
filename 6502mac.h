@@ -30,8 +30,7 @@ N EQU 2_10000000
 	MACRO		;translate from 6502 PC to rom offset
 	encodePC
 	and r1,m6502_pc,#0xE000
-	adr r2,memmap_tbl
-	ldr r0,[r2,r1,lsr#11]
+	ldr r0,[m6502_mmap,r1,lsr#11]
 	str r0,lastbank
 	add m6502_pc,m6502_pc,r0
 	MEND
@@ -78,9 +77,10 @@ N EQU 2_10000000
 
 	MACRO
 	readmemabs
-	and r1,addy,#0xE000
+	;warning, addy may contain a value up to 0x100FE, so tables need a dummy entry to handle the mirrored ram read
+	mvn r1,addy,lsr#13	;get top 3 bits of addy, negate, subtract 1
 	adr lr,%F0
-	ldr pc,[m6502_rmem,r1,lsr#11]	;in: addy,r1=addy&0xE000 (for rom_R)
+	ldr pc,[r10,r1,lsl#2]	;in: addy,r1=(addy>>13) (for rom_R)
 0				;out: r0=val (bits 8-31=0 (LSR,ROR,INC,DEC,ASL)), addy preserved for RMW instructions
 	MEND
 
@@ -142,10 +142,10 @@ N EQU 2_10000000
 
 	MACRO
 	writememabs
-	and r1,addy,#0xe000
-	adr r2,writemem_tbl
+	;warning, addy may be as high as 0x100FE, so the write mem table gets an extra entry for the overflow entry
+	mvn r1,addy,lsr#13
 	adr lr,%F0
-	ldr pc,[r2,r1,lsr#11]	;in: addy,r0=val(bits 8-31=?)
+	ldr pc,[m6502_mmap,r1,lsl#2]	;in: addy,r0=val(bits 8-31=?)
 0				;out: r0,r1,r2,addy=?
 	MEND
 
@@ -239,10 +239,37 @@ _type	SETA      _ABS
 ;	bic addy,addy,#0xff0000 ;Base Wars needs this
 	MEND
 
+
+	MACRO
+	doAIX_ACCURATE                           ;absolute indexed X     $nnnn,X
+_type	SETA      _ABS
+	ldrb addy,[m6502_pc],#1
+	adds r0,m6502_x,addy,lsl#24
+	subcs cycles,cycles,#CYCLE*3	;waste a cycle if address crosses a page (for Battletoads)
+	ldrb r0,[m6502_pc],#1
+	orr addy,addy,r0,lsl#8
+	add addy,addy,m6502_x,lsr#24
+;	bic addy,addy,#0xff0000 ;Base Wars needs this
+	MEND
+
+
 	MACRO
 	doAIY                           ;absolute indexed Y     $nnnn,Y
 _type	SETA      _ABS
 	ldrb addy,[m6502_pc],#1
+	ldrb r0,[m6502_pc],#1
+	orr addy,addy,r0,lsl#8
+	add addy,addy,m6502_y,lsr#24
+;	bic addy,addy,#0xff0000 ;Tecmo Bowl needs this
+	MEND
+
+
+	MACRO
+	doAIY_ACCURATE                           ;absolute indexed Y     $nnnn,Y
+_type	SETA      _ABS
+	ldrb addy,[m6502_pc],#1
+	adds r0,m6502_y,addy,lsl#24
+	subcs cycles,cycles,#CYCLE*3	;waste a cycle if address crosses a page (for Battletoads)
 	ldrb r0,[m6502_pc],#1
 	orr addy,addy,r0,lsl#8
 	add addy,addy,m6502_y,lsr#24
@@ -279,6 +306,28 @@ _type	SETA      _ABS
 	ldrb r1,[r0,#1]
 	]
 
+	orr addy,addy,r1,lsl#8
+	add addy,addy,m6502_y,lsr#24
+;	bic addy,addy,#0xff0000 ;Zelda2 needs this
+	MEND
+
+	MACRO
+	doIIY_ACCURATE                           ;indirect indexed Y     ($nn),Y
+_type	SETA      _ABS
+	ldrb r0,[m6502_pc],#1
+	[ HAPPY_CPU_TESTER
+	cmp r0,#0xFF
+	ldrb addy,[r0,cpu_zpage]!
+	subeq r0,r0,#0x100
+	ldrb r1,[r0,#1]
+	|
+	ldrb addy,[r0,cpu_zpage]!
+	ldrb r1,[r0,#1]
+	]
+	
+	adds r2,m6502_y,addy,lsl#24
+	subcs cycles,cycles,#3*CYCLE	;waste a cycle if address crosses a page
+	
 	orr addy,addy,r1,lsl#8
 	add addy,addy,m6502_y,lsr#24
 ;	bic addy,addy,#0xff0000 ;Zelda2 needs this

@@ -146,7 +146,7 @@ SPR_VRAM EQU AGB_VRAM+SPR_VRAM_ADD
 	EXPORT _vram_map
 	EXPORT _vram_write_tbl
 	EXPORT vram_write_direct
-	EXPORT vram_read_direct
+;	EXPORT vram_read_direct
 	EXPORT VRAM_chr
 	EXPORT debug_
 	EXPORT AGBinput
@@ -440,6 +440,12 @@ ppi0	mov r0,#0
 	str r0,[r2],#4
 	adds r1,r1,#1
 	bne ppi0
+	
+	;store canary 1
+	ldr r0,=0xDEADBEEF
+	str r0,[r2]
+	
+	
 	bx lr
 	
 	
@@ -707,10 +713,10 @@ ppu2004_r
 	
 	
 	
-	
-	
-	
 
+
+
+	
 ;----------------------------------------------------------------------------
 	AREA wram_code6, CODE, READWRITE
 ;----------------------------------------------------------------------------
@@ -833,15 +839,11 @@ updatetiles_done
 	mov r0,#0x8000
 	strh r0,[r_tnum]
 	mov r0,#0
-	str r0,[d_rows,#0]
-	str r0,[d_rows,#4]
-	str r0,[d_rows,#8]
-	str r0,[d_rows,#12]
-	str r0,[d_rows,#16]
-	str r0,[d_rows,#20]
-	str r0,[d_rows,#24]
-	str r0,[d_rows,#28]
-	
+	mov r1,#0
+	mov r2,#0
+	mov r3,#0
+	stmia d_rows!,{r0-r3}
+	stmia d_rows!,{r0-r3}
 	ldmfd sp!,{pc}
 
 consume_recent_tiles
@@ -1375,6 +1377,34 @@ sprmask_apply_loop
 	bx lr
 	
 	AREA rom_code6, CODE, READONLY
+
+need_to_fetch_sprite_data
+	ldr r4,=alreadylooked
+	ldr r4,[r4]
+	movs r4,r4
+	mov r4,#PRIORITY
+	bxeq lr
+	mov r4,#0
+	ldr r0,=alreadylooked
+	str r4,[r0]
+	ldr lr,=update_sprites_enter
+	ldr r0,=recache_sprites
+	bx r0
+
+;vram_read_direct
+;	and r0,addy,#0x3c00
+;	adr r1,vram_map
+;	ldr r0,[r1,r0,lsr#8]
+;	bic r1,addy,#0xfc00
+;	ldrb r0,[r0,r1]
+;	bx lr
+
+palread
+	and r0,r0,#0x1f
+	adr r1,nes_palette
+	ldrb r0,[r1,r0]
+	mov pc,lr
+
 	
 sprscanend
 	mov addy,lr
@@ -1510,6 +1540,40 @@ bgmap_clean
 	ldmfd sp!,{pc}
 
 
+check_canaries
+	mov r11,r11
+	stmfd sp!,{lr}
+	ldr r1,=IWRAM_CANARY_1
+	ldr r2,=0xDEADBEEF
+	ldr r0,[r1]
+	cmp r0,r2
+	bne canary1_fail
+
+	ldr r1,=IWRAM_CANARY_2
+	ldr r2,=0xDEAFBEEF
+	ldr r0,[r1]
+	cmp r0,r2
+	bne canary2_fail
+	
+	ldmfd sp!,{pc}
+canary1_fail
+	mov r11,r11
+	;test if it's safe
+	cmp r1,sp	;is canary before the stack?  Then it's safe.
+	bge %f0
+	bl_long build_chr_decode
+	b %f1
+canary2_fail
+	mov r11,r11
+	cmp r1,sp	;is canary before the stack?  Then it's safe.
+	bge %f0
+1
+	ldr r0,=g_scaling
+	ldrb r0,[r0]
+	and r0,r0,#3
+	bl_long spriteinit
+0
+	ldmfd sp!,{pc}
 
 scale75
 	stmfd sp!,{lr}
@@ -1794,6 +1858,9 @@ vblankinterrupt;
 ;----------------------------------------------------------------------------
 	stmfd sp!,{r4-addy,lr}
 	ldr globalptr,=GLOBAL_PTR_BASE
+	
+	bl_long check_canaries
+	
 
 	ldr r0,emuflags
 	tst r0,#PALTIMING
@@ -2294,7 +2361,7 @@ dm11
 	;mult by 64
 	tst r4,#0x80000000
 	add r4,r11,r4,lsl#6
-	blne need_to_fetch_sprite_data
+	blne_long need_to_fetch_sprite_data
 	;get tile number
 	and r1,r3,#0x3F00
 	add r4,r4,r1,lsr#8
@@ -2353,7 +2420,7 @@ dm12
 	ldrsb r4,[r9,r4]
 	tst r4,#0x80000000
 	add r4,r11,r4,lsl#6
-	blne need_to_fetch_sprite_data
+	blne_long need_to_fetch_sprite_data
 	;get tile number
 	and r1,r3,#0x3E00
 	add r4,r4,r1,lsr#8
@@ -2404,16 +2471,6 @@ dm13
 
 alreadylooked
 	DCD 0
-need_to_fetch_sprite_data
-	ldr r4,alreadylooked
-	movs r4,r4
-	mov r4,#PRIORITY
-	bxeq lr
-	mov r4,#0
-	str r4,alreadylooked
-	adr lr,update_sprites_enter
-	ldr r0,=recache_sprites
-	bx r0
 	
 
 ;----------------------------------------------------------------------------
@@ -2828,14 +2885,6 @@ sy_wasover
 	b recheck239
 
 
-vram_read_direct
-	and r0,addy,#0x3c00
-	adr r1,vram_map
-	ldr r0,[r1,r0,lsr#8]
-	bic r1,addy,#0xfc00
-	ldrb r0,[r0,r1]
-	bx lr
-
 ;scrollYold DCD 0 ;last write
 ;scrollYline DCD 0 ;..was when?
 ;----------------------------------------------------------------------------
@@ -2848,7 +2897,7 @@ vmdata_R	;(2007)
 	str r2,vramaddr
 
 	cmp r0,#0x3f00
-	bhs palread
+	bhs_long palread
 
 	and r1,r0,#0x3c00
 	adr r2,vram_map
@@ -2858,11 +2907,6 @@ vmdata_R	;(2007)
 	ldrb r1,[r1,r0]
 	ldrb r0,readtemp
 	str r1,readtemp
-	mov pc,lr
-palread
-	and r0,r0,#0x1f
-	adr r1,nes_palette
-	ldrb r0,[r1,r0]
 	mov pc,lr
 
 ;----------------------------------------------------------------------------

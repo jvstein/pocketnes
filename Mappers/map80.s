@@ -20,7 +20,7 @@ mapper80init	;Taito
 	strb r1,cartflags		;set cartflags
 
 	adr r0,write80
-	str r0,writemem_tbl+12
+	str r0,writemem_tbl-12
 	ldr r0,rommask
 	tst r0,#0x20000
 	movne r0,#1

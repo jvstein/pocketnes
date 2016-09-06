@@ -46,7 +46,7 @@ mapper249init
 
 	ldrb r0,mapper_number
 	ldr r1,=commandlist
-	ldr r2,writemem_tbl+16
+	ldr r2,writemem_tbl-16
 
 	cmp r0,#118
 	ldreq r2,=write0_118
@@ -81,7 +81,7 @@ mapper249init
 	str r3,[r1,#7*4+32]
 	]
 	
-	str r2,writemem_tbl+16
+	str r2,writemem_tbl-16
 null
 	mov pc,lr
 

@@ -36,4 +36,5 @@
 ;	IMPORT mirrorM_
 	IMPORT mirrorKonami_
 	IMPORT chrfinish
+	IMPORT g_scaling
 	END

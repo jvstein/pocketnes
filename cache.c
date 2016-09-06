@@ -119,7 +119,7 @@ void get_rom_map()
 	const u32 sram_w_2 = (u32)sram_W;
 	const u32 sram_w_3 = (u32)empty_W;
 	u32 current_write_func;
-	current_write_func= ((u32*)writemem_tbl)[3];
+	current_write_func= ((u32*)writemem_tbl)[-3];
 	if (current_write_func != sram_w_1 &&
 	    current_write_func != sram_w_2 &&
 	    current_write_func != sram_w_3)
@@ -150,16 +150,16 @@ void get_rom_map()
 		if (banks[0]==255)
 		{
 			//it's sram
-			((u32*)readmem_tbl)[3]=(u32)sram_R;
-			((u32*)writemem_tbl)[3]=sram_W_func;
+			((u32*)readmem_tbl)[-3]=(u32)sram_R;
+			((u32*)writemem_tbl)[-3]=sram_W_func;
 			((u32*)memmap_tbl)[3]=(u32)(NES_RAM-0x5800);
 
 		}
 		else
 		{
 			//it's rom
-			((u32*)readmem_tbl)[3]=(u32)rom_R60;
-			((u32*)writemem_tbl)[3]=(u32)empty_W;
+			((u32*)readmem_tbl)[-3]=(u32)rom_R60;
+			((u32*)writemem_tbl)[-3]=(u32)empty_W;
 		}
 	}
 }

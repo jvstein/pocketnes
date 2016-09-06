@@ -70,10 +70,10 @@ mapJinx
 	tst r0,#0x40
 	ldreq r1,=rom_R60			;Swap in ROM at $6000-$7FFF.
 	ldrne r1,=sram_R		;Swap in sram at $6000-$7FFF.
-	str r1,readmem_tbl+12
+	str r1,readmem_tbl-12
 	ldreq r1,=empty_W		;ROM.
 	ldrne r1,=sram_W		;sram.
-	str r1,writemem_tbl+12
+	str r1,writemem_tbl-12
 	beq_long map67_
 	ldr r1,=NES_RAM-0x5800		;sram at $6000.
 	str r1,memmap_tbl+12

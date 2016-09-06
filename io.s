@@ -118,6 +118,14 @@ si4	mov r2,r1,lsr#24
 	add r1,r1,r0
 	cmp r2,#0xb4
 	bne si4
+	
+	;add the canary
+	ldr r0,=0xDEAFBEEF
+	ldr r1,=IWRAM_CANARY_2
+	str r0,[r1]
+	
+	
+	
 	bx lr
 ;----------------------------------------------------------------------------
 suspend	;called from ui.c and 6502.s

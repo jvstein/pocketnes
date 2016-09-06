@@ -22,7 +22,7 @@ mapper16init;		Bandai
 	bic r1,r1,#SRAM			;don't use SRAM on this mapper
 	strb r1,cartflags		;set cartflags
 	ldr r1,mapper16init
-	str r1,writemem_tbl+12
+	str r1,writemem_tbl-12
 
 	ldr r0,=mapper_16_hook
 	str r0,scanlinehook

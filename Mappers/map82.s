@@ -14,7 +14,7 @@ mapper82init;		Taito something...
 	DCD void,void,void,void
 
 	adr r1,write0
-	str r1,writemem_tbl+12
+	str r1,writemem_tbl-12
 	mov pc,lr
 ;----------------------------------------------------------------------------
 write0		;$8000-8001

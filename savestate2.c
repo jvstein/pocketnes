@@ -560,7 +560,7 @@ void restore_variables_for_loadstate()
 	m6502_pc= (u8*)((u32)oldpc+(u32)lastbank);
 	m6502_s=(u8*)((u32)m6502_s+(u32)NES_RAM);
 	
-	cpustate[1]=(u32)readmem_tbl;
+	cpustate[1]=(u32)memmap_tbl;
 	
 	ppustat_=ppustat_savestate;
 	

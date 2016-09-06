@@ -48,10 +48,10 @@ mapper5init
 	DCD void,void,void,void
 
 	adr r1,write0
-	str r1,writemem_tbl+8
+	str r1,writemem_tbl-8
 
 	adr r1,mmc5_r
-	str r1,readmem_tbl+8
+	str r1,readmem_tbl-8
 
 	mov r0,#3
 	strb r0,prgsize

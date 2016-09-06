@@ -19,9 +19,9 @@ mapper42init
 	mov addy,lr
 
 	ldr r1,=rom_R60			;Swap in ROM at $6000-$7FFF.
-	str r1,readmem_tbl+12
+	str r1,readmem_tbl-12
 	ldr r1,=empty_W		;ROM.
-	str r1,writemem_tbl+12
+	str r1,writemem_tbl-12
 	
 	mov r0,#-1
 	bl_long map89ABCDEF_

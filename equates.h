@@ -16,7 +16,7 @@
 		GBLL RESET_ALL
 		GBLL LINK
 		GBLL SAVESTATES
-		
+
 		GBLL HAPPY_CPU_TESTER
 HAPPY_CPU_TESTER SETL {FALSE}
 
@@ -24,7 +24,7 @@ HAPPY_CPU_TESTER SETL {FALSE}
 LINK SETL {FALSE}
 RESET_ALL SETL {FALSE}
 USE_BG_CACHE SETL {FALSE}
-SAVE SETL {FALSE}
+CARTSAVE SETL {FALSE}
 RTCSUPPORT SETL {FALSE}
 DEBUG		SETL {FALSE}
 CHEATFINDER	SETL {FALSE}
@@ -129,12 +129,13 @@ START_OF_IWRAM	EQU NES_RAM
 ;stack has 48 bytes of breathing room left!
  ]
 
-	[ VERSION="COMPY"
-PCMWAVSIZE		EQU 128
-;PCMWAV			EQU YSCALE_EXTRA-PCMWAVSIZE
-PCMWAV			EQU NES_RAM-PCMWAVSIZE
-MAPPED_RGB		EQU PCMWAV-0xC0
-	]
+;;	[ VERSION="COMPY"
+;;PCMWAVSIZE		EQU 128
+;;;PCMWAV			EQU YSCALE_EXTRA-PCMWAVSIZE
+;;PCMWAV			EQU NES_RAM-PCMWAVSIZE
+;;MAPPED_RGB		EQU PCMWAV-0xC0
+;;	]
+
 ;YSCALE_EXTRA	EQU CHR_DECODE+0x400	;50
 ;YSCALE_LOOKUP	EQU YSCALE_EXTRA+0x50	;108
 ;PCMWAVSIZE		EQU 128
@@ -200,7 +201,7 @@ BANKBUFFER2  EQU BANKBUFFER1-30*8
 
 ;chr_rom_table EQU BANKBUFFER2-1024
 spr_cache_map EQU BANKBUFFER2-256
-spr_cache_disp	EQU spr_cache_map-16
+spr_cache_disp	EQU spr_cache_map-16	;Must be immediately AFTER spr_cache in memory
 spr_cache	EQU spr_cache_disp-16
 
 NEXT SETA spr_cache
@@ -208,19 +209,19 @@ NEXT SETA spr_cache
 	[ DIRTYTILES
 RECENT_TILENUM1	EQU NEXT-(MAX_RECENT_TILES+2)*2
 RECENT_TILENUM2	EQU RECENT_TILENUM1-(MAX_RECENT_TILES+2)*2
-dirty_rows  EQU RECENT_TILENUM2-32
+dirty_rows  EQU RECENT_TILENUM2-32		;Must be immediately AFTER dirty_tiles in memory
 dirty_tiles EQU dirty_rows -516
 
 NEXT SETA dirty_tiles
 
 	]
 
-	[ VERSION <> "COMPY"
+;	[ VERSION <> "COMPY"
 PCMWAVSIZE		EQU 128
 PCMWAV			EQU NEXT-PCMWAVSIZE
 MAPPED_RGB		EQU PCMWAV-0xC0
 NEXT SETA MAPPED_RGB
-	]
+;	]
 
 	[ CARTSAVE
 CachedConfig	EQU NEXT-48
@@ -325,7 +326,7 @@ REG_RCNT		EQU 0x34 ;+100
 
 		;r0,r1,r2=temp regs
 m6502_nz	RN r3 ;bit 31=N, Z=1 if bits 0-7=0
-m6502_rmem	RN r4 ;readmem_tbl
+m6502_mmap	RN r4 ;memmap_tbl
 m6502_a		RN r5 ;bits 0-23=0, also used to clear bytes in memory
 m6502_x		RN r6 ;bits 0-23=0
 m6502_y		RN r7 ;bits 0-23=0
@@ -350,10 +351,16 @@ nes_sram # 0x2000
 ;everything in wram_globals* areas:
 
  MAP 0,globalptr	;6502.s
-opz # 256*4
-readmem_tbl # 8*4
-writemem_tbl # 8*4
+ # -26*4
+writemem_tbl_base # 8*4
+writemem_tbl # 4
+
 memmap_tbl # 8*4
+
+readmem_tbl_base # 8*4
+readmem_tbl # 4
+
+opz # 256*4
 ;###begin cpustate
 cpuregs # 7*4
 m6502_s # 4
@@ -416,7 +423,7 @@ bankable_vrom # 1
 
 vram_page_mask # 1
 vram_page_base # 1
-windowtop_scaled6_8 # 1 
+windowtop_scaled6_8 # 1
 windowtop_scaled7_8 # 1
 
 	[ DIRTYTILES

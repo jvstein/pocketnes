@@ -16,7 +16,7 @@ mapper79init
 	DCD chr01234567_,chr01234567_,chr01234567_,chr01234567_
 
 	adr r1,write0
-	str r1,writemem_tbl+8
+	str r1,writemem_tbl-8
 
 	mov r0,#0xff
 	b_long map89ABCDEF_

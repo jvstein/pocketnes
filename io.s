@@ -17,7 +17,7 @@
 	EXPORT serialinterrupt
 	EXPORT resetSIO
 	EXPORT thumbcall_r1
-
+	EXPORT gbpadress
 
  AREA rom_code, CODE, READONLY ;-- - - - - - - - - - - - - - - - - - - - - -
 
@@ -643,7 +643,7 @@ multi				;r2=joycfg
 	cmp r4,#2
 	beq fin
 	strb r3,joy2state
-	mov r3,r3,asr#16
+	mov r3,r3,lsr#16
 	cmp r4,#3
 	strneb r3,joy3state
 fin	ands r0,r0,#0		;Z=1
@@ -710,6 +710,7 @@ sendreset       ;exits with r1=emuflags, r4=REG_SIOCNT, Z=1 if send was OK
 	strh r4,[r5,#REG_SIOCNT]	;send!
 	mov pc,lr
 
+gbpadress DCD 0x04000000
 joycfg DCD 0x40ff01ff ;byte0=auto mask, byte1=(saves R), byte2=R auto mask
 ;bit 31=single/multi, 30,29=1P/2P, 27=(multi) link active, 24=reset signal received
 joy0state DCD 0
@@ -726,20 +727,18 @@ joy0_W		;4016
 	tst r0,#1
 	movne pc,lr
 
-;	mov r2,#0xffffff00	;for normal joypads.
-	mov r2,#0x00080000	;4player adapter
 	ldr r0,joy0state
 	ldr r1,joy2state
 	orr r0,r0,r1,lsl#8
-	orr r0,r0,r2
+;	orr r0,r0,#0xFFFFFF00	;for normal joypads.
+	orr r0,r0,#0x00080000	;4player adapter
 	str r0,joy0serial
 
-;	mov r2,#0xffffff00	;for normal joypads.
-	mov r2,#0x00040000	;4player adapter
 	ldr r0,joy1state
 	ldr r1,joy3state
 	orr r0,r0,r1,lsl#8
-	orr r0,r0,r2
+;	orr r0,r0,#0xFFFFFF00	;for normal joypads.
+	orr r0,r0,#0x00040000	;4player adapter
 	str r0,joy1serial
 	mov pc,lr
 ;----------------------------------------------------------------------------
@@ -755,8 +754,8 @@ joy0_R		;4016
 	orreq nes_nz,nes_nz,#0x40
 	moveq pc,lr
 
-	ldr r2,joy0state
-	tst r2,#8		;start=coin (VS)
+	ldr r1,joy0state
+	tst r1,#8		;start=coin (VS)
 	orrne nes_nz,nes_nz,#0x40
 
 	mov pc,lr

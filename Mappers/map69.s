@@ -62,7 +62,7 @@ irqB69
 mapJinx
 ;----------------------------------------------------------------------------
 	tst r0,#0x40
-	ldreq r1,=rom_R			;Swap in ROM at $6000-$7FFF.
+	ldreq r1,=rom_R60			;Swap in ROM at $6000-$7FFF.
 	ldrne r1,=sram_R		;Swap in sram at $6000-$7FFF.
 	str r1,readmem_tbl+12
 	ldreq r1,=empty_W		;ROM.

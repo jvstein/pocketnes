@@ -93,7 +93,7 @@ typedef struct {
 #define REG_DM1CNT_H *(u16*)0x40000c6
 #define REG_DM2CNT_H *(u16*)0x40000d2
 #define REG_DM3CNT_H *(u16*)0x40000de
-#define REG_BLDMOD *(u16*)0x4000050
+#define REG_BLDCNT *(u16*)0x4000050
 #define REG_COLY *(u16*)0x4000054
 #define REG_SGCNT0_L *(u16*)0x4000080
 #define REG_SGBIAS *(u16*)0x4000088

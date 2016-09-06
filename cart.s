@@ -39,7 +39,6 @@
 	EXPORT mirror2V_
 	EXPORT mirror2H_
 	EXPORT mirror4_
-	EXPORT mirrorM_
 	EXPORT mirrorKonami_
 	EXPORT chrfinish
 	EXPORT savestate
@@ -252,7 +251,7 @@ lc2
 	ldr r1,=NES_RAM-0x5800	;$6000 for mapper 40, 69 & 90 that has rom here.
 	str r1,memmap_tbl+12
 
-	mov nes_pc,#0	;(eliminates any encodePC errors during mapper*init)
+	mov nes_pc,#0		;(eliminates any encodePC errors during mapper*init)
 	str nes_pc,lastbank
 
 	ldrb r1,[r3,#-10]	;get mapper#
@@ -430,18 +429,6 @@ mirrorKonami_
 	tst r0,#1
 	bcc mirror2V_
 	bcs mirror1_
-mirrorM_
-	mov r1,r0,lsr#2
-	eor r1,r1,r0
-	and r1,r1,#0x30
-	beq mirror2V_
-
-	mov r1,r0,lsr#4
-	eor r1,r1,r0
-	and r1,r1,#0x0c
-	beq mirror2H_
-
-;	b mirrorchange
 mirror1_
 	ldrne r0,=m1111
 	ldreq r0,=m0000
@@ -484,11 +471,11 @@ mirrorchange
 ;----------------------------------------------------------------------------
 map67_	;rom paging.. r0=page#
 ;----------------------------------------------------------------------------
+	ldr r1,rommask
+	and r0,r1,r0,lsl#13
 	ldr r1,rombase
-	sub r1,r1,#0x6000
-	ldr r2,rommask
-	and r0,r0,r2,lsr#13
-	add r0,r1,r0,lsl#13
+	add r0,r1,r0
+	sub r0,r0,#0x6000
 	str r0,memmap_tbl+12
 	b flush
 ;----------------------------------------------------------------------------
@@ -497,8 +484,8 @@ map89_	;rom paging.. r0=page#
 	ldr r1,rombase
 	sub r1,r1,#0x8000
 	ldr r2,rommask
-	and r0,r0,r2,lsr#13
-	add r0,r1,r0,lsl#13
+	and r0,r2,r0,lsl#13
+	add r0,r1,r0
 	str r0,memmap_tbl+16
 	b flush
 ;----------------------------------------------------------------------------
@@ -507,8 +494,8 @@ mapAB_
 	ldr r1,rombase
 	sub r1,r1,#0xa000
 	ldr r2,rommask
-	and r0,r0,r2,lsr#13
-	add r0,r1,r0,lsl#13
+	and r0,r2,r0,lsl#13
+	add r0,r1,r0
 	str r0,memmap_tbl+20
 	b flush
 ;----------------------------------------------------------------------------
@@ -517,8 +504,8 @@ mapCD_
 	ldr r1,rombase
 	sub r1,r1,#0xc000
 	ldr r2,rommask
-	and r0,r0,r2,lsr#13
-	add r0,r1,r0,lsl#13
+	and r0,r2,r0,lsl#13
+	add r0,r1,r0
 	str r0,memmap_tbl+24
 	b flush
 ;----------------------------------------------------------------------------
@@ -527,8 +514,8 @@ mapEF_
 	ldr r1,rombase
 	sub r1,r1,#0xe000
 	ldr r2,rommask
-	and r0,r0,r2,lsr#13
-	add r0,r1,r0,lsl#13
+	and r0,r2,r0,lsl#13
+	add r0,r1,r0
 	str r0,memmap_tbl+28
 	b flush
 ;----------------------------------------------------------------------------
@@ -537,8 +524,8 @@ map89AB_
 	ldr r1,rombase
 	sub r1,r1,#0x8000
 	ldr r2,rommask
-	and r0,r0,r2,lsr#14
-	add r0,r1,r0,lsl#14
+	and r0,r2,r0,lsl#14
+	add r0,r1,r0
 	str r0,memmap_tbl+16
 	str r0,memmap_tbl+20
 flush		;update nes_pc & lastbank
@@ -552,8 +539,8 @@ mapCDEF_
 	ldr r1,rombase
 	sub r1,r1,#0xc000
 	ldr r2,rommask
-	and r0,r0,r2,lsr#14
-	add r0,r1,r0,lsl#14
+	and r0,r2,r0,lsl#14
+	add r0,r1,r0
 	str r0,memmap_tbl+24
 	str r0,memmap_tbl+28
 	b flush
@@ -563,8 +550,8 @@ map89ABCDEF_
 	ldr r1,rombase
 	sub r1,r1,#0x8000
 	ldr r2,rommask
-	and r0,r0,r2,lsr#15
-	add r0,r1,r0,lsl#15
+	and r0,r2,r0,lsl#15
+	add r0,r1,r0
 	str r0,memmap_tbl+16
 	str r0,memmap_tbl+20
 	str r0,memmap_tbl+24

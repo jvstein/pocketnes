@@ -75,6 +75,9 @@ __main
 		ldr r1,=|Image$$RO$$Base|	;copy rom code to exram
 		add r0,r1,#0x6000000
 		ldr r3,=|Image$$RO$$Limit|
+		add r0,r0,#4			; XG2 resets when 0x08000000 is accessed.
+		ldr r2,=0xEA00002E
+		str r2, [r1], #4
 _2		cmp r1,r3
 		ldrcc r2, [r0], #4
 		strcc r2, [r1], #4
@@ -105,9 +108,14 @@ giveup	bhi giveup
 	ldr r4,=max_multiboot_size
 	str r6,[r4]
 
-	mov r0,#0x14
-	ldr r1,=REG_WSCNT
-	strh r0,[r1]		;3/1 wait state
+;	ldr r0,=0x8014		;3/1 waitstate & prefetch. No difference???
+	mov r0,#0x0014		;3/1 waitstate
+	ldr r1,=REG_WAITCNT
+	strh r0,[r1]		;3/1 waitstate
+
+;	ldr r0,=0x0E000020	;1 waitstate,0x0D000020=2 waitstate
+;	ldr r1,=0x04000800	;EWRAM WAITCTL
+;	str r0,[r1]		;3/1 waitstate
 
 	ldr r1,=C_entry
 	bx r1

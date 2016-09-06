@@ -548,34 +548,32 @@ ctrl1line	DCD 0 ;when?
 ;----------------------------------------------------------------------------
 stat_R		;(2002)
 ;----------------------------------------------------------------------------
-        ldrb r2,emuflags       ;probably in a polling loop
-	tst r2,#USEPPUHACK
+        ldrb r0,emuflags       ;probably in a polling loop
+	tst r0,#USEPPUHACK
 	movne cycles,#0		;let's help out
 
-	mov r1,#0
-	strb r1,toggle
+	mov r0,#0
+	strb r0,toggle
 
 	ldrb nes_nz,ppustat
-	ldr r1,sprite0y		;sprite0 hit?
-	ldr r2,scanline
-	cmp r2,r1
+	ldr r0,sprite0y		;sprite0 hit?
+	ldr r1,scanline
+	cmp r1,r0
 ;	ble nosprh
-;	ldrb r1,sprite0x	;for extra high resolution sprite0 hit
-;	ldr r2,cyclesperscanline ;the store is in IO.s
-;	sub r2,r2,cycles
-;	cmp r2,r1
+;	ldrb r0,sprite0x	;for extra high resolution sprite0 hit
+;	ldr r1,cyclesperscanline ;the store is in IO.s
+;	sub r1,r1,cycles
+;	cmp r1,r0
 	orrhi nes_nz,nes_nz,#0x40
 ;nosprh
-	bic r1,nes_nz,#0x80		;vbl flag clear
-	strb r1,ppustat
+	bic r0,nes_nz,#0x80		;vbl flag clear
+	strb r0,ppustat
 
 	orr nes_nz,nes_nz,nes_nz,lsl#24		;to set sign.
 	mov pc,lr
 ;----------------------------------------------------------------------------
 bgscroll_W	;(2005)
 ;----------------------------------------------------------------------------
-	and r0,r0,#0xff
-
 	ldrb r1,toggle
 	eors r1,r1,#1
 	strb r1,toggle
@@ -585,8 +583,8 @@ bgscrollX
 newX			;ctrl0_W, loadstate jumps here
 	ldr r0,scrollX
 newX2			;vmaddr_W jumps here
-	adr r2,scrollXold
-	swp r0,r0,[r2]		;r0=lastval
+	adr r1,scrollXold
+	swp r0,r0,[r1]		;r0=lastval
 
 	adr r2,scrollXline
 	ldr addy,scanline	;addy=scanline
@@ -700,9 +698,9 @@ vmdata_R	;(2007)
 	cmp r0,#0x3f00
 	bhs palread
 
-	mov r1,r0,lsr#10
+	and r1,r0,#0x3c00
 	adr r2,vram_map
-	ldr r1,[r2,r1,lsl#2]
+	ldr r1,[r2,r1,lsr#8]
 	bic r0,r0,#0xfc00
 
 	ldrsb r1,[r1,r0]
@@ -717,45 +715,42 @@ palread
 ;----------------------------------------------------------------------------
 vmdata_W	;(2007)
 ;----------------------------------------------------------------------------
-	and r0,r0,#0xff
-
 	ldr addy,vramaddr
 	ldrb r1,vramaddrinc
 	bic addy,addy,#0xfc000 ;AND $3fff
 	add r2,addy,r1
 	str r2,vramaddr
 
-	mov r1,addy,lsr#10
+	and r1,addy,#0x3c00
 	adr r2,vram_write_tbl
-	ldr pc,[r2,r1,lsl#2]
+	ldr pc,[r2,r1,lsr#8]
 ;----------------------------------------------------------------------------
 VRAM_chr;	0000-1fff
 ;----------------------------------------------------------------------------
 	ldr r2,=NES_VRAM
 	strb r0,[r2,addy]
 
-	stmfd sp!,{r3,r4,lr}
-
 	bic addy,addy,#8
 	ldrb r0,[r2,addy]!	;read 1st plane
 	ldrb r1,[r2,#8]		;read 2nd plane
-
-	ldr r3,=AGB_VRAM		;r3=AGB BG tileset
-	and r2,addy,#7		;r2=tile line#
-	add r3,r3,addy,lsl#1
-	add r3,r3,r2,lsl#1
-	add r4,r3,#0x10000
-	tst r3,#0x2000		;1st or 2nd page?
-	addne r3,r3,#0x2000	;0000/4000 for BG, 10000/12000 for OBJ
 
 	adr r2,chr_decode
 	ldr r0,[r2,r0,lsl#2]
 	ldr r1,[r2,r1,lsl#2]
 	orr r0,r0,r1,lsl#1
-	str r0,[r3]
-	str r0,[r4]
 
-	ldmfd sp!,{r3,r4,pc}
+	and r2,addy,#7		;r2=tile line#
+	add addy,addy,r2
+	add r1,addy,addy
+	add r1,r1,#AGB_VRAM		;AGB BG tileset
+	add addy,r1,#0x10000
+	tst r1,#0x2000		;1st or 2nd page?
+	addne r1,r1,#0x2000	;0000/4000 for BG, 10000/12000 for OBJ
+
+	str r0,[r1]
+	str r0,[addy]
+
+	mov pc,lr
 ;----------------------------------------------------------------------------
 VRAM_name0	;(2000-23ff)
 ;----------------------------------------------------------------------------
@@ -767,12 +762,12 @@ writeBG		;loadcart jumps here
 	cmp addy,#0x3c0
 	bhs writeattrib
 ;writeNT
-		cmp r0,#0xfd	;mapper 9 shit..
-	mov addy,addy,lsl#1
+	add addy,addy,addy	;lsl#1
 	ldrh r1,[r2,addy]	;use old color
 	and r1,r1,#0xf000
-	orr r0,r0,r1
-	strh r0,[r2,addy]	;write tile#
+	orr r1,r0,r1
+	strh r1,[r2,addy]	;write tile#
+		cmp r0,#0xfd	;mapper 9 shit..
 		bhs mapper9BGcheck
 	mov pc,lr
 writeattrib
@@ -854,11 +849,11 @@ VRAM_pal	;write to VRAM palette area ($3F00-$3F1F)
 
 	ldr r1,=MAPPED_RGB
 	ldr r0,[r1,r0,lsl#1]	;lookup RGB
-	adr r2,agb_pal
+	adr r1,agb_pal
 		tst addy,#0x0f
 		moveq addy,#0	;$10 mirror to $00
-	mov addy,addy,lsl#1
-	strh r0,[r2,addy]	;store in agb palette
+	add addy,addy,addy	;lsl#1
+	strh r0,[r1,addy]	;store in agb palette
 	mov pc,lr
 ;----------------------------------------------------------------------------
 debug_		;debug output, r0=val, r1=line, r2=used.

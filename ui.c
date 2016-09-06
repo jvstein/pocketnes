@@ -30,6 +30,7 @@ extern char g_scaling;	//from cart.s
 extern u32 wtop;	//from ppu.s
 
 extern int pogones;
+extern int gameboyplayer;
 
 int autoA,autoB;	//0=off, 1=on, 2=R
 
@@ -51,7 +52,7 @@ void managesram(void);	//sram.c
 void writeconfig(void);	//sram.c
 
 #define POGOMENUITEMS 11 //mainmenuitems when running from cart (not multiboot)
-#define CARTMENUITEMS 10 //mainmenuitems when running from cart (not multiboot)
+#define CARTMENUITEMS 11 //mainmenuitems when running from cart (not multiboot)
 #define MULTIBOOTMENUITEMS 7 //"" when running from multiboot
 fptr fnlist[]={autoBset,autoAset,controller,display,multiboot,managesram,savestatemenu,loadstatemenu,sleep,restart,exit};
 fptr multifnlist[]={autoBset,autoAset,controller,display,multiboot,sleep,restart};
@@ -88,7 +89,7 @@ u32 getmenuinput(int menuitems) {
 }
 
 void ui() {
-	int key,soundvol,oldsel,tm0cnt;
+	int key,soundvol,oldsel,tm0cnt,i;
 
 	autoA=joycfg&A_BTN?0:1;
 	autoA|=joycfg&(A_BTN<<16)?0:2;
@@ -96,15 +97,19 @@ void ui() {
 	autoB|=joycfg&(B_BTN<<16)?0:2;
 
 	mainmenuitems=((u32)textstart>0x8000000?CARTMENUITEMS:MULTIBOOTMENUITEMS);//running from rom or multiboot?
-	if(pogones)
-	    mainmenuitems++;
 
-	REG_BLDMOD=0x00f3;	//darken screen
 
 	soundvol=REG_SGCNT0_L;
 	REG_SGCNT0_L=0;		//stop sound (GB)
 	tm0cnt=REG_TM0CNT;
 	REG_TM0CNT=0;		//stop sound (directsound)
+
+	REG_BLDCNT=0x00f3;	//darken screen
+	for(i=0;i<7;i++)
+	{
+		REG_COLY=i;	//darken screen
+		waitframe();
+	}
 
 	oldkey=~REG_P1;		//reset key input
 	selected=0;
@@ -123,6 +128,10 @@ void ui() {
 			drawshit();
 	} while(!(key&(B_BTN+R_BTN+L_BTN)));
 	writeconfig();		//save any changes
+	while(key&(B_BTN)) {
+		waitframe();		//(polling REG_P1 too fast seems to cause problems)
+		key=~REG_P1;
+	}
 	REG_SGCNT0_L=soundvol;	//resume sound (GB)
 	REG_TM0CNT=tm0cnt;	//resume sound (directsound)
 	cls();
@@ -149,11 +158,14 @@ void drawshit() {
 	cls();
     if(pogones)
     {
-	drawtext(19,"                PogoNES v9.6",0);
+	drawtext(19,"                PogoNES v9.9",0);
     }
     else
     {
-	drawtext(19,"              PocketNES v9.6",0);
+	if(gameboyplayer){
+	drawtext(19,"       PocketNES v9.9 on GBP",0);}
+	else{
+	drawtext(19,"              PocketNES v9.9",0);}
     }
 	strmerge(str,"B autofire: ",autotxt[autoB]);
 	text(0,str);
@@ -174,8 +186,7 @@ void drawshit() {
 		text(7,"Load State");
 		text(8,"Sleep");
 		text(9,"Restart");
-		if(pogones)
-		    text(10,"Exit");
+		text(10,"Exit");
 	}
 }
 
@@ -232,12 +243,17 @@ void multiboot() {
 }
 
 void restart() {
-    REG_BLDMOD=0;	//no dark
-    __asm {mov r0,#0x3007f00} //stack reset
+    writeconfig();		//save any changes
+    REG_BLDCNT=0;		//no dark
+    __asm {mov r0,#0x3007f00}	//stack reset
     __asm {mov sp,r0}
     rommenu();
 }
 void exit() {
+    REG_BG0HOFS=0;
+    REG_BG0VOFS=0;
+    REG_BLDCNT=0;		//no blending
+    writeconfig();		//save any changes
     doReset();
 }
 

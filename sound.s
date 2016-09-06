@@ -29,6 +29,89 @@
 pcmirqbakup EQU mapperdata+24
 pcmirqcount EQU mapperdata+28
 
+ AREA wram_code0, CODE, READWRITE
+;----------------------------------------------------------------------------
+pcm_mix
+;----------------------------------------------------------------------------
+	movs r2,r2,lsr#1
+	addcs r0,r0,#PCMSTEP
+	subcc r0,r0,#PCMSTEP
+	cmp r0,#PCMLIMIT			;range check volume level
+	movgt r0,#PCMLIMIT
+	cmp r0,#-PCMLIMIT
+	movlt r0,#-PCMLIMIT
+	mov r5,r0
+
+	movs r2,r2,lsr#1
+	addcs r0,r0,#PCMSTEP
+	subcc r0,r0,#PCMSTEP
+	cmp r0,#PCMLIMIT			;range check volume level
+	movgt r0,#PCMLIMIT
+	cmp r0,#-PCMLIMIT
+	movlt r0,#-PCMLIMIT
+	orr r5,r0,r5,lsr#8
+
+	movs r2,r2,lsr#1
+	addcs r0,r0,#PCMSTEP
+	subcc r0,r0,#PCMSTEP
+	cmp r0,#PCMLIMIT			;range check volume level
+	movgt r0,#PCMLIMIT
+	cmp r0,#-PCMLIMIT
+	movlt r0,#-PCMLIMIT
+	orr r5,r0,r5,lsr#8
+
+	movs r2,r2,lsr#1
+	addcs r0,r0,#PCMSTEP
+	subcc r0,r0,#PCMSTEP
+	cmp r0,#PCMLIMIT			;range check volume level
+	movgt r0,#PCMLIMIT
+	cmp r0,#-PCMLIMIT
+	movlt r0,#-PCMLIMIT
+	orr r5,r0,r5,lsr#8
+	str r5,[r12],#4
+
+	movs r2,r2,lsr#1
+	addcs r0,r0,#PCMSTEP
+	subcc r0,r0,#PCMSTEP
+	cmp r0,#PCMLIMIT			;range check volume level
+	movgt r0,#PCMLIMIT
+	cmp r0,#-PCMLIMIT
+	movlt r0,#-PCMLIMIT
+	mov r5,r0
+
+	movs r2,r2,lsr#1
+	addcs r0,r0,#PCMSTEP
+	subcc r0,r0,#PCMSTEP
+	cmp r0,#PCMLIMIT			;range check volume level
+	movgt r0,#PCMLIMIT
+	cmp r0,#-PCMLIMIT
+	movlt r0,#-PCMLIMIT
+	orr r5,r0,r5,lsr#8
+
+	movs r2,r2,lsr#1
+	addcs r0,r0,#PCMSTEP
+	subcc r0,r0,#PCMSTEP
+	cmp r0,#PCMLIMIT			;range check volume level
+	movgt r0,#PCMLIMIT
+	cmp r0,#-PCMLIMIT
+	movlt r0,#-PCMLIMIT
+	orr r5,r0,r5,lsr#8
+
+	movs r2,r2,lsr#1
+	addcs r0,r0,#PCMSTEP
+	subcc r0,r0,#PCMSTEP
+	cmp r0,#PCMLIMIT			;range check volume level
+	movgt r0,#PCMLIMIT
+	cmp r0,#-PCMLIMIT
+	movlt r0,#-PCMLIMIT
+	orr r5,r0,r5,lsr#8
+	str r5,[r12],#4
+
+	b endmix
+;----------------------------------------------------------------------------
+
+
+
  AREA rom_code, CODE, READONLY ;-- - - - - - - - - - - - - - - - - - - - - -
 
 freqtbl
@@ -93,13 +176,13 @@ sound_reset_
 
 	mov pc,lr
 
-trianglewav				;Remeber this is 4-bit
+trianglewav				;Remember this is 4-bit
 	DCB 0x76,0x54,0x32,0x10,0x01,0x23,0x45,0x67,0x89,0xAB,0xCD,0xEF,0xFE,0xDC,0xBA,0x98
 ;----------------------------------------------------------------------------
 timer1interrupt
 ;----------------------------------------------------------------------------
-PCMSTEP		EQU 3
-PCMLIMIT	EQU (96)
+PCMSTEP		EQU 3<<24
+PCMLIMIT	EQU 96<<24
 
 	mov r1,#REG_BASE
 	strh r1,[r1,#REG_DM2CNT_H]	;DMA stop
@@ -113,6 +196,7 @@ PCMLIMIT	EQU (96)
 	ldr r3,pcmcount			;r3=bytes remaining
 	ldr r12,=PCMWAV			;r12=dma buffer
 	ldr r0,pcmlevel			;r0=volume level
+	mov r0,r0,lsl#24
 	add r4,r12,#PCMWAVSIZE		;r4=end of buffer
 
 	tst r3,#0x80000000		;if pcmcount<0 (pcm finished on previous interrupt)
@@ -124,99 +208,23 @@ pcm0
 	subs r3,r3,#1			;pcmcount--
 	bmi pcm2
 	ldrb r2,[r1],#1			;next byte..
-
-	movs r2,r2,lsr#1
-	addcc r0,r0,#PCMSTEP
-	subcs r0,r0,#PCMSTEP
-	cmp r0,#PCMLIMIT			;range check volume level
-	movgt r0,#PCMLIMIT
-	cmp r0,#-PCMLIMIT
-	movlt r0,#-PCMLIMIT
-	strb r0,[r12],#1
-
-	movs r2,r2,lsr#1
-	addcc r0,r0,#PCMSTEP
-	subcs r0,r0,#PCMSTEP
-	cmp r0,#PCMLIMIT			;range check volume level
-	movgt r0,#PCMLIMIT
-	cmp r0,#-PCMLIMIT
-	movlt r0,#-PCMLIMIT
-	strb r0,[r12],#1
-
-	movs r2,r2,lsr#1
-	addcc r0,r0,#PCMSTEP
-	subcs r0,r0,#PCMSTEP
-	cmp r0,#PCMLIMIT			;range check volume level
-	movgt r0,#PCMLIMIT
-	cmp r0,#-PCMLIMIT
-	movlt r0,#-PCMLIMIT
-	strb r0,[r12],#1
-
-	movs r2,r2,lsr#1
-	addcc r0,r0,#PCMSTEP
-	subcs r0,r0,#PCMSTEP
-	cmp r0,#PCMLIMIT			;range check volume level
-	movgt r0,#PCMLIMIT
-	cmp r0,#-PCMLIMIT
-	movlt r0,#-PCMLIMIT
-	strb r0,[r12],#1
-
-	movs r2,r2,lsr#1
-	addcc r0,r0,#PCMSTEP
-	subcs r0,r0,#PCMSTEP
-	cmp r0,#PCMLIMIT			;range check volume level
-	movgt r0,#PCMLIMIT
-	cmp r0,#-PCMLIMIT
-	movlt r0,#-PCMLIMIT
-	strb r0,[r12],#1
-
-	movs r2,r2,lsr#1
-	addcc r0,r0,#PCMSTEP
-	subcs r0,r0,#PCMSTEP
-	cmp r0,#PCMLIMIT			;range check volume level
-	movgt r0,#PCMLIMIT
-	cmp r0,#-PCMLIMIT
-	movlt r0,#-PCMLIMIT
-	strb r0,[r12],#1
-
-	movs r2,r2,lsr#1
-	addcc r0,r0,#PCMSTEP
-	subcs r0,r0,#PCMSTEP
-	cmp r0,#PCMLIMIT			;range check volume level
-	movgt r0,#PCMLIMIT
-	cmp r0,#-PCMLIMIT
-	movlt r0,#-PCMLIMIT
-	strb r0,[r12],#1
-
-	movs r2,r2,lsr#1
-	addcc r0,r0,#PCMSTEP
-	subcs r0,r0,#PCMSTEP
-	cmp r0,#PCMLIMIT			;range check volume level
-	movgt r0,#PCMLIMIT
-	cmp r0,#-PCMLIMIT
-	movlt r0,#-PCMLIMIT
-	strb r0,[r12],#1
-
+	b pcm_mix
+endmix
 	cmp r12,r4
 	blo pcm0
+	mov r0,r0,lsr#24
 	str r0,pcmlevel
 	str r1,pcmcurrentaddr
 	b pcmexit
 pcm2			;PCM data just ran out.  what now?
 	ldrb r2,pcmctrl
 	tst r2,#0x40		;looping enabled?
-				;no?
-	;???				;handle PCM IRQ
-	beq pcm1				;begin clearing sound buffer
 				;yes?
-	ldr r3,pcmlength			;reload pcmcount
-	ldr r1,pcmstart			;reload pcmcurrentaddr
-	b pcm0
+	ldrne r3,pcmlength			;reload pcmcount
+	ldrne r1,pcmstart			;reload pcmcurrentaddr
+	bne pcm0
 pcm1				;PCM has stopped.  clear remaining sound buffer.
 	mov r0,#0
-;	and r0,r0,#0xff
-;	orr r0,r0,r0,lsl#8
-;	orr r0,r0,r0,lsl#16
 clpcm 	str r0,[r12],#4
 	str r0,[r12],#4
 	cmp r12,r4
@@ -225,7 +233,6 @@ clpcm 	str r0,[r12],#4
 	cmp r3,#0x80000000		;if this was the 2nd pass (entire buffer is cleared),
 	bne pcmexit
 	mov r1,#REG_BASE
-;	str r0,[r1,#REG_FIFO_B_L]	;Set DA value... doesn't work
 	add r1,r1,#REG_TM0D
 	mov r0,#0
 	strh r0,[r1,#2]			;stop timer 0 (to reduce interrupt frequency)
@@ -541,7 +548,6 @@ _4011w	;Delta Counter load register
 	sub r0,r0,#0x80		;GBA has -128 -> +127
 	str r0,pcmlevel		;Start level for PCM
 
-;	and r0,r0,#0xfe
 ;	orr r0,r0,r0,lsl#8
 ;	orr r0,r0,r0,lsl#16
 ;	mov r1,#REG_BASE
@@ -703,10 +709,9 @@ _4015r
 ;----------------------------------------------------------------------------
 	mov r2,#REG_BASE
 	ldrh r0,[r2,#REG_SGCNT_L]
-	mov r0,r0,lsr#12
 	ldrb r1,pcmctrl+1
 	and r1,r1,#0x90		;only read channel 5 and pcm IRQ
-	orr nes_nz,r0,r1
+	orr nes_nz,r1,r0,lsr#12
 	orr nes_nz,nes_nz,nes_nz,lsl#24
 
 	mov pc,lr

@@ -30,7 +30,7 @@
 	IMPORT mirror2H_
 	IMPORT mirror2V_
 	IMPORT mirror4_
-	IMPORT mirrorM_
+;	IMPORT mirrorM_
 	IMPORT mirrorKonami_
 	IMPORT chrfinish
 	END

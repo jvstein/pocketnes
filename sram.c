@@ -423,7 +423,7 @@ void quicksave() {
 	if(!using_flashcart())
 		return;
 
-	REG_BLDMOD=0x00f3;	//darken
+	REG_BLDCNT=0x00f3;	//darken
 	drawtext(9,"           Saving.",0);
 
 	i=savestate(BUFFER2);

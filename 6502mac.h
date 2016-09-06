@@ -12,6 +12,21 @@ R EQU 2_00100000	;(locked at 1)
 V EQU 2_01000000
 N EQU 2_10000000
 
+
+	MACRO		;Change CPU mode from System to FIQ
+	modeFIQ
+	mrs r0,cpsr
+	bic r0,r0,#0x0e
+	msr cpsr_cf,r0
+	MEND
+
+	MACRO		;Change CPU mode from FIQ to System
+	modeSystem
+	mrs r0,cpsr
+	orr r0,r0,#0x0e
+	msr cpsr_cf,r0
+	MEND
+
 	MACRO		;translate nes_pc from 6502 PC to rom offset
 	encodePC
 	mov r1,nes_pc,lsr#13
@@ -57,7 +72,7 @@ N EQU 2_10000000
 	MEND
 
 	MACRO
-	readmem
+	readmemabs
 	and r1,addy,#0xE000
 	adr r2,readmem_tbl
 	adr lr,%F0
@@ -73,6 +88,19 @@ N EQU 2_10000000
 	MACRO
 	readmemimm
 	ldrsb nes_nz,[nes_pc],#1
+	MEND
+
+	MACRO
+	readmem
+	[ _type = _ABS
+		readmemabs
+	]
+	[ _type = _ZP
+		readmemzp
+	]
+	[ _type = _IMM
+		readmemimm
+	]
 	MEND
 
 	MACRO
@@ -110,26 +138,24 @@ N EQU 2_10000000
 
 	MACRO
 	pop16		;pop nes_pc
-	ldr r1,nes_s
-	add r1,r1,#1
-	bic r1,r1,#0x200
-	orr r1,r1,#0x100
-	ldrb nes_pc,[r1],#1
-	bic r1,r1,#0x200
-	orr r1,r1,#0x100
-	ldrb r0,[r1]
+	ldrb r2,nes_s
+	add r2,r2,#1
+	orr r2,r2,#0x100
+	ldrb nes_pc,[nes_zpage,r2]
+	add r2,r2,#1
+	strb r2,nes_s
+	ldr r2,nes_s
+	ldrb r0,[r2]
 	orr nes_pc,nes_pc,r0,lsl#8
-	str r1,nes_s
 	MEND		;r0,r1=?
 
 	MACRO
 	pop8 $x
-	ldr r2,nes_s
+	ldrb r2,nes_s
 	add r2,r2,#1
-	bic r2,r2,#0x200 ;parodius needs these
+	strb r2,nes_s
 	orr r2,r2,#0x100 ;..
-	ldrsb $x,[r2]		;signed for PLA
-	str r2,nes_s
+	ldrsb $x,[r2,nes_zpage]		;signed for PLA
 	MEND	;r2=?
 
 ;----------------------------------------------------------------------------
@@ -142,7 +168,7 @@ _ZP	EQU     2                       ;zero page
 _ABS	EQU     3                       ;absolute
 
 	MACRO
-	doABS                           ;absolute               $xxxx
+	doABS                           ;absolute               $nnnn
 _type	SETA      _ABS
 	ldrb addy,[nes_pc],#1
 	ldrb r0,[nes_pc],#1
@@ -150,71 +176,71 @@ _type	SETA      _ABS
 	MEND
 
 	MACRO
-	doAIX                           ;absolute indexed X     $xxxx,X
+	doAIX                           ;absolute indexed X     $nnnn,X
 _type	SETA      _ABS
 	ldrb addy,[nes_pc],#1
 	ldrb r0,[nes_pc],#1
 	orr addy,addy,r0,lsl#8
-	add addy,addy,nes_x
+	add addy,addy,nes_x,lsr#24
 	bic addy,addy,#0xff0000 ;Base Wars needs this
 	MEND
 
 	MACRO
-	doAIY                           ;absolute indexed Y     $xxxx,Y
+	doAIY                           ;absolute indexed Y     $nnnn,Y
 _type	SETA      _ABS
 	ldrb addy,[nes_pc],#1
 	ldrb r0,[nes_pc],#1
 	orr addy,addy,r0,lsl#8
-	add addy,addy,nes_y
+	add addy,addy,nes_y,lsr#24
 	bic addy,addy,#0xff0000 ;Tecmo Bowl needs this
 	MEND
 
 	MACRO
-	doIMM                           ;immediate              #$xx
+	doIMM                           ;immediate              #$nn
 _type	SETA      _IMM
 	MEND
 
 	MACRO
-	doIIX                           ;indexed indirect X     ($xx,X)
+	doIIX                           ;indexed indirect X     ($nn,X)
 _type	SETA      _ABS
 	ldrb r0,[nes_pc],#1
-	add r0,r0,nes_x
-	and r0,r0,#0xff
-	ldrb addy,[r0,nes_zpage]!
-	ldrb r1,[r0,#1]
+	add r0,nes_x,r0,lsl#24
+	ldrb addy,[nes_zpage,r0,lsr#24]
+	add r0,r0,#0x01000000
+	ldrb r1,[nes_zpage,r0,lsr#24]
 	orr addy,addy,r1,lsl#8
 	MEND
 
 	MACRO
-	doIIY                           ;indirect indexed Y     ($xx),Y
+	doIIY                           ;indirect indexed Y     ($nn),Y
 _type	SETA      _ABS
 	ldrb r0,[nes_pc],#1
 	ldrb addy,[r0,nes_zpage]!
 	ldrb r1,[r0,#1]
 	orr addy,addy,r1,lsl#8
-	add addy,addy,nes_y
+	add addy,addy,nes_y,lsr#24
 	bic addy,addy,#0xff0000 ;Zelda2 needs this
 	MEND
 
 	MACRO
-	doZ                             ;zero page              $xx
+	doZ                             ;zero page              $nn
 _type	SETA      _ZP
 	ldrb addy,[nes_pc],#1
 	MEND
 
 	MACRO
-	doZIX                           ;zero page indexed X    $xx,X
+	doZIX                           ;zero page indexed X    $nn,X
 _type	SETA      _ZP
 	ldrb addy,[nes_pc],#1
-	add addy,addy,nes_x
+	add addy,addy,nes_x,lsr#24
 	and addy,addy,#0xff ;Rygar needs this
 	MEND
 
 	MACRO
-	doZIY                           ;zero page indexed Y    $xx,Y
+	doZIY                           ;zero page indexed Y    $nn,Y
 _type	SETA      _ZP
 	ldrb addy,[nes_pc],#1
-	add addy,addy,nes_y
+	add addy,addy,nes_y,lsr#24
 	and addy,addy,#0xff
 	MEND
 
@@ -222,35 +248,19 @@ _type	SETA      _ZP
 
 	MACRO
 	opADC
-	[ _type = _ABS
-		readmem
-	]
-	[ _type = _ZP
-		readmemzp
-	]
-	[ _type = _IMM
-		readmemimm
-	]
+	readmem
 	eor nes_nz,nes_nz,#0xff
 	msr cpsr_f,nes_c        ;get C
-	and nes_a,nes_a,#0xff000000
 	sbcs nes_a,nes_a,nes_nz,lsl#24
 	mov nes_nz,nes_a,asr#24 ;NZ
 	mrs nes_c,cpsr          ;C
 	str nes_c,nes_v         ;V
+	and nes_a,nes_a,#0xff000000
 	MEND
 
 	MACRO
 	opAND
-	[ _type = _ABS
-		readmem
-	]
-	[ _type = _ZP
-		readmemzp
-	]
-	[ _type = _IMM
-		readmemimm
-	]
+	readmem
 	and nes_a,nes_a,nes_nz,lsl#24
 	mov nes_nz,nes_a,asr#24
 	MEND
@@ -258,198 +268,100 @@ _type	SETA      _ZP
 	MACRO
 	opASL
 	[ _type=_ABS
-		readmem
-		 mov nes_c,nes_nz,lsl#22		;Do this first so we get rid of the signextend.
+		readmemabs
+		 mov nes_c,nes_nz,lsl#22	;C	;Do this first so we get rid of the signextend.
 		 mov r0,nes_c,lsr#21
-		 orr nes_nz,r0,r0,lsl#24
+		 orr nes_nz,r0,r0,lsl#24	;NZ
 		writemem
 	|
 		ldrb r0,[nes_zpage,addy]
 		 add r0,r0,r0
-		 orrs nes_nz,r0,r0,lsl#24
-		 mrs nes_c,cpsr          ;C
+		 orrs nes_nz,r0,r0,lsl#24	;NZ
+		 mrs nes_c,cpsr			;C
 		strb r0,[nes_zpage,addy]
 	]
 	MEND
 
 	MACRO
 	opBIT
-	[ _type=_ABS
-		readmem
-	|
-		readmemzp
-	]
-	and r0,nes_nz,nes_a,lsr#24  ;Z
+	readmem
+	and r0,nes_nz,nes_a,lsr#24	;Z
 	mov r1,nes_nz,lsl#22
-	str r1,nes_v                ;V
-	orr nes_nz,r0,nes_nz,lsl#24 ;N
+	str r1,nes_v			;V
+	orr nes_nz,r0,nes_nz,lsl#24	;N
 	MEND
 
 	MACRO
-	opCMP
-	[ _type = _ABS
-		readmem
-	]
-	[ _type = _ZP
-		readmemzp
-	]
-	[ _type = _IMM
-		readmemimm
-	]
-	subs nes_nz,nes_a,nes_nz,lsl#24
-	mov nes_nz,nes_nz,asr#24 ;NZ
-	mrs nes_c,cpsr          ;C
-	MEND
-
-	MACRO
-	opCPX
-	[ _type = _ABS
-		readmem
-	]
-	[ _type = _ZP
-		readmemzp
-	]
-	[ _type = _IMM
-		readmemimm
-	]
-	mov r1,nes_x,lsl#24
-	subs nes_nz,r1,nes_nz,lsl#24
-	mov nes_nz,nes_nz,asr#24 ;NZ
-	mrs nes_c,cpsr          ;C
-	MEND
-
-        MACRO
-	opCPY
-	[ _type = _ABS
-		readmem
-	]
-	[ _type = _ZP
-		readmemzp
-	]
-	[ _type = _IMM
-		readmemimm
-	]
-	mov r1,nes_y,lsl#24
-	subs nes_nz,r1,nes_nz,lsl#24
-	mov nes_nz,nes_nz,asr#24 ;NZ
-	mrs nes_c,cpsr           ;C
+	opCOMP $x			;A,X & Y
+	readmem
+	subs nes_nz,$x,nes_nz,lsl#24
+	mov nes_nz,nes_nz,asr#24	;NZ
+	mrs nes_c,cpsr			;C
 	MEND
 
 	MACRO
 	opDEC
 	[ _type=_ABS
-		readmem
+		readmemabs
 		and r0,nes_nz,#0xff
 		sub r0,r0,#1
-		orr nes_nz,r0,r0,lsl#24
+		orr nes_nz,r0,r0,lsl#24	;NZ
 		writemem
 	|
 		ldrb r0,[nes_zpage,addy]
 		sub r0,r0,#1
-		orr nes_nz,r0,r0,lsl#24
+		orr nes_nz,r0,r0,lsl#24	;NZ
 		strb r0,[nes_zpage,addy]
 	]
 	MEND
 
 	MACRO
 	opEOR
-	[ _type = _ABS
-		readmem
-	]
-	[ _type = _ZP
-		readmemzp
-	]
-	[ _type = _IMM
-		readmemimm
-	]
+	readmem
 	eor nes_a,nes_a,nes_nz,lsl#24
-	mov nes_nz,nes_a,asr#24
+	mov nes_nz,nes_a,asr#24		;NZ
 	MEND
 
 	MACRO
 	opINC
 	[ _type=_ABS
-		readmem
+		readmemabs
 		add r0,nes_nz,#1
-		orr nes_nz,r0,r0,lsl#24
+		orr nes_nz,r0,r0,lsl#24	;NZ
 		writemem
 	|
 		ldrb r0,[nes_zpage,addy]
 		add r0,r0,#1
-		orr nes_nz,r0,r0,lsl#24
+		orr nes_nz,r0,r0,lsl#24	;NZ
 		strb r0,[nes_zpage,addy]
 	]
 	MEND
 
 	MACRO
-	opLDA
-	[ _type = _ABS
-		readmem
-	]
-	[ _type = _ZP
-		readmemzp
-	]
-	[ _type = _IMM
-		readmemimm
-	]
-	mov nes_a,nes_nz,lsl#24
-	MEND
-
-	MACRO
-	opLDX
-	[ _type=_ABS
-		readmem
-	]
-	[ _type=_ZP
-		readmemzp
-	]
-	[ _type=_IMM
-		readmemimm
-	]
-	and nes_x,nes_nz,#0xff
-	MEND
-
-	MACRO
-	opLDY
-	[ _type=_ABS
-		readmem
-	]
-	[ _type=_ZP
-		readmemzp
-	]
-	[ _type=_IMM
-		readmemimm
-	]
-	and nes_y,nes_nz,#0xff
+	opLOAD $x
+	readmem
+	mov $x,nes_nz,lsl#24
 	MEND
 
 	MACRO
 	opLSR
 	[ _type=_ABS
-		readmem
+		readmemabs
 		mov nes_c,nes_nz,lsl#29
 		and nes_nz,nes_nz,#0xfe	;(N=0)
 		mov r0,nes_nz,lsr#1
 		writemem
 	|
 		ldrb nes_nz,[nes_zpage,addy]
-		movs nes_nz,nes_nz,lsr#1
-		mrs nes_c,cpsr
+		movs nes_nz,nes_nz,lsr#1	;NZ
+		mrs nes_c,cpsr			;C
 		strb nes_nz,[nes_zpage,addy]
 	]
 	MEND
 
 	MACRO
 	opORA
-	[ _type = _ABS
-		readmem
-	]
-	[ _type = _ZP
-		readmemzp
-	]
-	[ _type = _IMM
-		readmemimm
-	]
+	readmem
 	orr nes_a,nes_a,nes_nz,lsl#24
 	mov nes_nz,nes_a,asr#24
 	MEND
@@ -457,10 +369,9 @@ _type	SETA      _ZP
 	MACRO
 	opROL
 	[ _type=_ABS
-		readmem
-		 and r0,nes_nz,#0xff
+		readmemabs
 		 msr cpsr_f,nes_c	;get C
-		 adc r0,r0,r0
+		 adc r0,nes_nz,nes_nz
 		 orrs nes_nz,r0,r0,lsl#24 ;NZ
 		 mrs nes_c,cpsr		;C
 		writemem
@@ -477,7 +388,7 @@ _type	SETA      _ZP
 	MACRO
 	opROR
 	[ _type=_ABS
-		readmem
+		readmemabs
 		 mov r0,nes_nz,lsl#24
 		 orr r0,r0,nes_c,lsr#29
 		 movs r0,r0,ror#25
@@ -497,50 +408,22 @@ _type	SETA      _ZP
 
 	MACRO
 	opSBC
-	[ _type = _ABS
-		readmem
-	]
-	[ _type = _ZP
-		readmemzp
-	]
-	[ _type = _IMM
-		readmemimm
-	]
+	readmem
 	msr cpsr_f,nes_c        ;get C
-	and nes_a,nes_a,#0xff000000
 	sbcs nes_a,nes_a,nes_nz,lsl#24
 	mov nes_nz,nes_a,asr#24 ;NZ
 	mrs nes_c,cpsr          ;C
 	str nes_c,nes_v         ;V
+	and nes_a,nes_a,#0xff000000
 	MEND
 
 	MACRO
-	opSTA
-	mov r0,nes_a,lsr#24
+	opSTORE $x
+	mov r0,$x,lsr#24
 	[ _type=_ABS
 		writemem
 	|
 		strb r0,[nes_zpage,addy]
-	]
-	MEND
-
-	MACRO
-	opSTX
-	[ _type=_ABS
-		mov r0,nes_x
-		writemem
-	|
-		strb nes_x,[nes_zpage,addy]
-	]
-	MEND
-
-	MACRO
-	opSTY
-	[ _type=_ABS
-		mov r0,nes_y
-		writemem
-	|
-		strb nes_y,[nes_zpage,addy]
 	]
 	MEND
 ;----------------------------------------------------

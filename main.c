@@ -45,6 +45,7 @@ int roms;//total number of roms
 
 char pogoshell_romname[32];	//keep track of rom name (for state saving, etc)
 int pogones=0;
+int gameboyplayer=0;
 
 int ne=0x454e;
 void C_entry() {
@@ -89,6 +90,7 @@ void C_entry() {
 		p+=*(u32*)(p+32)+48;
 		i++;
 	}
+	if(i==0)i=1;
 	roms=i;
         
     }
@@ -114,7 +116,7 @@ void splash() {
 	}
 	waitframe();
 	REG_BG2CNT=0x0000;
-	REG_BLDMOD=0x84;	//(brightness increase)
+	REG_BLDCNT=0x84;	//(brightness increase)
 	REG_DISPCNT=BG2_EN|MODE3;
 	for(i=16;i>=0;i--) {	//fade from white
 		REG_COLY=i;
@@ -122,8 +124,9 @@ void splash() {
 	}
 	for(i=0;i<150;i++) {	//wait 2.5 seconds
 		waitframe();
+		if (REG_P1==0x030f) gameboyplayer=1;
 	}
-	REG_BLDMOD=0xc4;	//(brightness decrease)
+	REG_BLDCNT=0xc4;	//(brightness decrease)
 	for(i=0;i<16;i++) {
 		REG_COLY=i;	//fade to black
 		waitframe();
@@ -135,7 +138,7 @@ void rommenu(void) {
     if(pogones)
     {
         cls();
-        REG_BLDMOD=0;
+        REG_BLDCNT=0;
         REG_BG2CNT=0x0700;	//16color 256x256 CHRbase0 SCRbase7 Priority0
         REG_DISPCNT=BG2_EN|OBJ_1D; //mode0, 1d sprites, main screen turn on
         backup_nes_sram();
@@ -155,7 +158,7 @@ void rommenu(void) {
     	oldinput=AGBinput=~REG_P1;
     	cls();
     	waitframe();
-    	REG_BLDMOD=0x00f3;	//darken screen
+    	REG_BLDCNT=0x00f3;	//darken screen
     	REG_BG2CNT=0x0700;	//16color 256x256 CHRbase0 SCRbase7 Priority0
     	REG_DISPCNT=BG2_EN|OBJ_1D; //mode0, 1d sprites, main screen turn on
     	resetSIO((joycfg&~0xff000000) + 0x40000000);//back to 1P

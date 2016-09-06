@@ -14,12 +14,14 @@ extern char *textstart;
 int SendMBImageToClient(void);	//mbclient.c
 
 //----asm calls------
-void resetSIO(u32);		//io.s
-void doReset(void);		//io.s
-void suspend(void);		//io.s
-int gettime(void);		//io.s
-void spriteinit(char);	//io.s
-void debug_(int,int);	//ppu.s
+void resetSIO(u32);			//io.s
+void doReset(void);			//io.s
+void suspend(void);			//io.s
+int gettime(void);			//io.s
+void spriteinit(char);		//io.s
+void debug_(int,int);		//ppu.s
+void paletteinit(void);		//ppu.s
+void PaletteTxAll(void);	//ppu.s
 //-------------------
 
 extern u32 joycfg;			//from io.s
@@ -29,16 +31,18 @@ extern char novblankwait;	//from 6502.s
 extern u32 sleeptime;		//from 6502.s
 extern u32 FPSValue;		//from ppu.s
 extern char fpsenabled;		//from ppu.s
+extern u32 gammavalue;		//from ppu.s
 extern char twitch;			//from ppu.s
 extern char flicker;		//from ppu.s
 extern u32 wtop;			//from ppu.s
 
-extern int rtc;
-extern int pogoshell;
-extern int gameboyplayer;
+extern char rtc;
+extern char pogoshell;
+extern char gameboyplayer;
 
 int autoA,autoB;	//0=off, 1=on, 2=R
 u8 stime=0;
+u8 autostate=0;
 
 void autoAset(void);
 void autoBset(void);
@@ -48,18 +52,23 @@ void vblset(void);
 void restart(void);
 void exit(void);
 void multiboot(void);
-void loadstatemenu(void);
-void savestatemenu(void);
-void scrolll(void);
+void scrolll(int f);
 void scrollr(void);
 void drawui1(void);
 void drawui2(void);
-void subui(void);
+void drawui3(void);
+void subui(int menunr);
+void ui2(void);
+void ui3(void);
 void drawclock(void);
 void sleep(void);
 void sleepset(void);
 void fpsset(void);
+void brightset(void);
 void fadetowhite(void);
+void loadstatemenu(void);
+void savestatemenu(void);
+void autostateset(void);
 void display(void);
 void flickset(void);
 void bajs(void);
@@ -67,12 +76,14 @@ void bajs(void);
 void managesram(void);	//sram.c
 void writeconfig(void);	//sram.c
 
-#define MENU2ITEMS 5		//menu2items
+#define MENU2ITEMS 5		//othermenu items
+#define MENU3ITEMS 3		//displaymenu items
 #define CARTMENUITEMS 12 //mainmenuitems when running from cart (not multiboot)
 #define MULTIBOOTMENUITEMS 8 //"" when running from multiboot
-fptr fnlist1[]={autoBset,autoAset,controller,display,subui,multiboot,managesram,savestatemenu,loadstatemenu,sleep,restart,exit};
-fptr fnlist2[]={vblset,fpsset,swapAB,sleepset,flickset,bajs};
-fptr multifnlist[]={autoBset,autoAset,controller,display,subui,multiboot,sleep,restart};
+const fptr multifnlist[]={autoBset,autoAset,controller,ui3,ui2,multiboot,sleep,restart};
+const fptr fnlist1[]={autoBset,autoAset,controller,ui3,ui2,multiboot,managesram,savestatemenu,loadstatemenu,sleep,restart,exit};
+const fptr fnlist2[]={vblset,fpsset,swapAB,sleepset,autostateset,bajs};
+const fptr fnlist3[]={display,flickset,brightset};
 
 int selected;//selected menuitem.  used by all menus.
 int mainmenuitems;//? or CARTMENUITEMS, depending on whether saving is allowed
@@ -165,28 +176,39 @@ void ui() {
 	cls(3);
 }
 
-void subui() {
+void subui(int menunr) {
 	int key,oldsel;
 
 	selected=0;
-	drawui2();
-	scrolll();
+	if(menunr==2)drawui2();
+	if(menunr==3)drawui3();
+	scrolll(0);
 	oldkey=~REG_P1;			//reset key input
 	do {
-		key=getmenuinput(MENU2ITEMS);
+		if(menunr==2)key=getmenuinput(MENU2ITEMS);
+		if(menunr==3)key=getmenuinput(MENU3ITEMS);
 		if(key&(A_BTN)) {
 			oldsel=selected;
-			fnlist2[selected]();
+			if(menunr==2)fnlist2[selected]();
+			if(menunr==3)fnlist3[selected]();
 			selected=oldsel;
 		}
 		if(key&(A_BTN+UP+DOWN+LEFT+RIGHT))
-			drawui2();
+			if(menunr==2)drawui2();
+			if(menunr==3)drawui3();
 	} while(!(key&(B_BTN+R_BTN+L_BTN)));
 	scrollr();
 	while(key&(B_BTN)) {
 		waitframe();		//(polling REG_P1 too fast seems to cause problems)
 		key=~REG_P1;
 	}
+}
+
+void ui2() {
+	subui(2);
+}
+void ui3() {
+	subui(3);
 }
 
 void text(int row,char *str) {
@@ -204,33 +226,33 @@ void strmerge(char *dst,char *src1,char *src2) {
 	strcat(dst,src2);
 }
 
-char *ctrltxt[]={"1P","2P","Link2P","Link3P","Link4P"};
-char *autotxt[]={"OFF","ON","with R"};
-char *vsynctxt[]={"ON","OFF","SLOWMO"};
-char *sleeptxt[]={"5min","10min","30min","OFF"};
-char *disptxt[]={"UNSCALED","UNSCALED (Auto)","SCALED","SCALED (w/sprites)"};
-char *flicktxt[]={"No Flicker","Flicker"};
-char *cntrtxt[]={"US (NTSC)","Europe (PAL)"};
+char *const ctrltxt[]={"1P","2P","1P+2P","Link2P","Link3P","Link4P"};
+char *const autotxt[]={"OFF","ON","with R"};
+char *const vsynctxt[]={"ON","OFF","SLOWMO"};
+char *const sleeptxt[]={"5min","10min","30min","OFF"};
+char *const brightxt[]={"I","II","III","IIII","IIIII"};
+char *const disptxt[]={"UNSCALED","UNSCALED (Auto)","SCALED","SCALED (w/sprites)"};
+char *const flicktxt[]={"No Flicker","Flicker"};
+char *const cntrtxt[]={"US (NTSC)","Europe (PAL)"};
 void drawui1() {
 	char str[30];
 
 	cls(1);
 	if(pogoshell){
-		drawtext(19,"                PogoNES v9.94",0);}
+		drawtext(19,"                PogoNES v9.96",0);}
 	else{
 		if(gameboyplayer){
-			drawtext(19,"       PocketNES v9.94 on GBP",0);}
+			drawtext(19,"       PocketNES v9.96 on GBP",0);}
 		else{
-			drawtext(19,"              PocketNES v9.94",0);}
+			drawtext(19,"              PocketNES v9.96",0);}
 	}
 	strmerge(str,"B autofire: ",autotxt[autoB]);
 	text(0,str);
 	strmerge(str,"A autofire: ",autotxt[autoA]);
 	text(1,str);
-	strmerge(str,"Controller: ",ctrltxt[(joycfg>>29)-2]);
+	strmerge(str,"Controller: ",ctrltxt[(joycfg>>29)-1]);
 	text(2,str);
-	strmerge(str,"Display: ",disptxt[g_scaling&3]);
-	text(3,str);
+	text(3,"Display->");
 	text(4,"Other Settings->");
 	text(5,"Link Transfer");
 	if(mainmenuitems==MULTIBOOTMENUITEMS) {
@@ -259,10 +281,23 @@ void drawui2() {
 	text2(2,str);
 	strmerge(str,"Autosleep: ",sleeptxt[stime]);
 	text2(3,str);
-	strmerge(str,"Scaling: ",flicktxt[flicker]);
+	strmerge(str,"Autoload state: ",autotxt[autostate&1]);
 	text2(4,str);
 	strmerge(str,"Region: ",cntrtxt[(g_emuflags & 4)>>2]);		//USCOUNTRY=4
 	text2(5,str);
+}
+
+void drawui3() {
+	char str[30];
+
+	cls(2);
+	drawtext(32,"      Display Settings",0);
+	strmerge(str,"Display: ",disptxt[g_scaling&3]);
+	text2(0,str);
+	strmerge(str,"Scaling: ",flicktxt[flicker]);
+	text2(1,str);
+	strmerge(str,"Gamma: ",brightxt[gammavalue]);
+	text2(2,str);
 }
 
 void drawclock() {
@@ -323,7 +358,7 @@ void swapAB() {
 void controller() {		//see io.s: refreshNESjoypads
 	u32 i=joycfg+0x20000000;
 	if(i>=0xe0000000)
-		i-=0xa0000000;
+		i-=0xc0000000;
 	resetSIO(i);		//reset link state
 }
 
@@ -348,10 +383,14 @@ void vblset() {
 }
 
 void fpsset() {
-	fpsenabled++;
-	if(fpsenabled > 1){
-		fpsenabled=0;
-	}
+	fpsenabled = (fpsenabled^1)&1;
+}
+
+void brightset() {
+	gammavalue++;
+	if (gammavalue>4) gammavalue=0;
+	paletteinit();
+	PaletteTxAll();			//make new palette visible
 }
 
 void multiboot() {
@@ -371,12 +410,12 @@ void multiboot() {
 }
 
 void restart() {
-    writeconfig();		//save any changes
-	scrolll();
-    REG_BLDCNT=0;		//no dark
-    __asm {mov r0,#0x3007f00}	//stack reset
-    __asm {mov sp,r0}
-    rommenu();
+	writeconfig();		//save any changes
+	scrolll(1);
+	REG_BLDCNT=0;		//no dark
+	__asm {mov r0,#0x3007f00}	//stack reset
+	__asm {mov sp,r0}
+	rommenu();
 }
 void exit() {
 	writeconfig();		//save any changes
@@ -413,12 +452,13 @@ void fadetowhite() {
 	}
 }
 
-void scrolll() {
+void scrolll(int f) {
 	int i;
 	for(i=0;i<9;i++)
 	{
-		waitframe();
+		if(f) REG_COLY=8+i;	//Darken screen
 		REG_BG2HOFS=i*32;	//Move screen left
+		waitframe();
 	}
 }
 void scrollr() {
@@ -429,6 +469,10 @@ void scrollr() {
 		REG_BG2HOFS=i*32;	//Move screen left
 	}
 	cls(2);					//Clear BG2
+}
+
+void autostateset() {
+	autostate = (autostate^1)&1;
 }
 
 void display() {

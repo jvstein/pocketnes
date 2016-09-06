@@ -106,6 +106,8 @@ typedef struct {
 
 #define REG_SIOMULTI0 *(vu16*)0x4000120
 #define REG_SIOMULTI1 *(vu16*)0x4000122
+#define REG_SIOMULTI2 *(vu16*)0x4000124
+#define REG_SIOMULTI3 *(vu16*)0x4000126
 #define REG_SIOCNT *(vu16*)0x4000128
 #define REG_SIOMLT_SEND *(vu16*)0x400012a
 #define REG_RCNT *(vu16*)0x4000134

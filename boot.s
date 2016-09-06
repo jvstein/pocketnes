@@ -56,15 +56,13 @@ __main
 
 
 	ldr sp,=0x3007f00			;set System Stack
-	LDR	r5,=|Image$$RO$$Limit|	;r5=pointer to IWRAM code
-
-	ldr r0,=|Image$$RO$$Limit|
+	LDR r5,=|Image$$RO$$Limit|		;r5=pointer to IWRAM code
  [ BUILD = "DEBUG"
 	ldr r1,=|zzzzz$$Base|
  |
-	ldr r1,=|Image$$RW$$Limit|
+	ldr r1,=|Image$$ZI$$Base|
  ]
-	add r1,r1,r0
+	add r1,r1,r5
 	sub r6,r1,#0x3000000		;r6=textstart
 
 	adr lr,_3

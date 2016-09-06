@@ -17,12 +17,14 @@
 	EXPORT debug_
 	EXPORT AGBinput
 	EXPORT NESinput
-	EXPORT map_palette
+	EXPORT paletteinit
+	EXPORT PaletteTxAll
 	EXPORT newframe
 	EXPORT agb_pal
 	EXPORT ppustate
 	EXPORT writeBG
 	EXPORT wtop
+	EXPORT gammavalue
 	EXPORT oambuffer
 	EXPORT ctrl1_W
 	EXPORT newX
@@ -30,11 +32,33 @@
 	EXPORT flicker
 	EXPORT fpsenabled
 	EXPORT FPSValue
+	EXPORT vbldummy
+	EXPORT vblankfptr
+	EXPORT vblankinterrupt
 
  AREA rom_code, CODE, READONLY
 
-nes_rgb
+nes_rgb15
 	INCBIN nespal.bin
+nes_rgb
+;	DCB 0x6E,0x6E,0x6E, 0x27,0x19,0xA6, 0x00,0x07,0xA1, 0x44,0x00,0x96, 0xA1,0x00,0x86, 0xB2,0x00,0x28, 0xC1,0x06,0x00, 0x8C,0x17,0x00
+;	DCB 0x5C,0x41,0x00, 0x10,0x47,0x00, 0x05,0x4C,0x00, 0x00,0x45,0x2E, 0x16,0x51,0x5B, 0x00,0x00,0x00, 0x21,0x21,0x21, 0x04,0x04,0x04
+;	DCB 0xBF,0xBF,0xBF, 0x00,0x94,0xF7, 0x39,0x43,0xE8, 0x7D,0x16,0xF3, 0xDE,0x07,0xC9, 0xF1,0x1E,0x65, 0xE8,0x31,0x21, 0xD6,0x64,0x00
+;	DCB 0xA3,0x81,0x00, 0x40,0x80,0x00, 0x05,0x8F,0x00, 0x00,0x8A,0x55, 0x05,0xA2,0xAA, 0x35,0x35,0x35, 0x09,0x09,0x09, 0x09,0x09,0x09
+;	DCB 0xFF,0xFF,0xFF, 0x2F,0xD7,0xFF, 0x89,0x9E,0xF8, 0xB4,0x74,0xFB, 0xFF,0x52,0xF3, 0xFC,0x61,0x8B, 0xF7,0x7A,0x60, 0xFF,0x90,0x3D
+;	DCB 0xFA,0xBC,0x2F, 0x9F,0xE3,0x26, 0x2B,0xED,0x35, 0x3C,0xE3,0x9A, 0x06,0xDB,0xE3, 0x7E,0x7E,0x7E, 0x0D,0x0D,0x0D, 0x0D,0x0D,0x0D
+;	DCB 0xFF,0xFF,0xFF, 0xA6,0xE2,0xFF, 0xC3,0xD2,0xFF, 0xD2,0xAB,0xFF, 0xFF,0xA8,0xF9, 0xFF,0xB1,0xC4, 0xFF,0xBF,0xB7, 0xFF,0xE7,0xA6
+;	DCB 0xFF,0xF7,0x9C, 0xD7,0xFC,0x95, 0xA6,0xFE,0xAF, 0xA2,0xF2,0xDA, 0x99,0xF7,0xFF, 0xCD,0xCD,0xCD, 0x11,0x11,0x11, 0x11,0x11,0x11
+
+	DCB 117,117,117, 39,27,143, 0,0,171, 71,0,159, 143,0,119, 171,0,19, 167,0,0, 127,11,0
+	DCB 67,47,0, 0,71,0, 0,81,0, 0,63,23, 27,63,95, 0,0,0, 31,31,31, 5,5,5
+	DCB 188,188,188, 0,115,239, 35,59,239, 131,0,243, 191,0,191, 231,0,91, 219,43,0, 203,79,15
+	DCB 139,115,0, 0,151,0, 0,171,0, 0,147,59, 0,131,139, 49,49,49, 9,9,9, 9,9,9
+	DCB 255,255,255, 63,191,255, 95,151,255, 167,139,253, 247,123,255, 255,119,183, 255,119,99, 255,155,59
+	DCB 243,191,63, 131,211,19, 79,223,75, 88,248,152, 0,235,219, 102,102,102, 13,13,13, 13,13,13
+	DCB 255,255,255, 171,231,255, 199,215,255, 215,203,255, 255,199,255, 255,199,219,255, 191,179,255, 219,171
+	DCB 255,231,163, 227,255,163, 171,243,191, 179,255,207, 159,255,243, 209,209,209, 17,17,17, 17,17,17
+
 vs_palmaps
 ;freedomforce/gradius/hoogansalley/pinball/platoon
 	DCB 0x35,0x3f,0x16,0x22,0x1c,0x09,0x30,0x15,0x30,0x00,0x27,0x05,0x04,0x28,0x08,0x30
@@ -67,11 +91,13 @@ vs_palmaps
 ;	DCB 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
 ;	DCB 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x1b,0x00
 ;----------------------------------------------------------------------------
-map_palette	;(for VS unisys)	r0-r2,r4-r7 modified
+remap_pal
+;map_palette	;(for VS unisys)	r0-r2,r4-r7 modified
 ;----------------------------------------------------------------------------
+
 	ldr r5,=nes_rgb
 	ldr r6,=MAPPED_RGB
-	mov r7,#64
+	mov r7,#64*3
 	ldrb r0,cartflags
 	tst r0,#VS
 	beq nomap
@@ -95,16 +121,20 @@ mp0	ldr r0,[r2],#8
 nomap
 	ldr r0,[r5],#4
 	str r0,[r6],#4
-	subs r7,r7,#2
+	subs r7,r7,#4
 	bne nomap
 	mov pc,lr
 remap
 	ldr r1,[r2,#-4]
-mp1	ldrb r0,[r1],#1
-	mov r0,r0,lsl#1
-	ldrh r0,[r5,r0]
-	strh r0,[r6],#2
-	subs r7,r7,#1
+mp1	ldrb r2,[r1],#1
+	add r2,r2,r2,lsl#1
+	ldrb r0,[r2,r5]!
+	strb r0,[r6],#1
+	ldrb r0,[r2,#1]
+	strb r0,[r6],#1
+	ldrb r0,[r2,#2]
+	strb r0,[r6],#1
+	subs r7,r7,#3
 	bne mp1
 	mov pc,lr
 
@@ -132,6 +162,78 @@ vslist	DCD 0xfff3f318,vs_palmaps+64*0 ;Freedom Force	RP2C04-0001
 ;	DCD 0xffdac0c4,vs_palmaps+64*? ;TKO Boxing			doesn't start
 ;	DCD 0xf958f88f,vs_palmaps+64*3 ;Super Xevious		doesn't start
 	DCD 0
+;----------------------------------------------------------------------------
+paletteinit;	r0-r3 modified.
+;called by ui.c:  void map_palette(char gammavalue)
+;----------------------------------------------------------------------------
+	stmfd sp!,{r4-r8,lr}
+	bl remap_pal
+	ldr r8,=0x05000100
+	adr r6,nes_rgb15
+	mov r4,#64
+gloop0
+	ldrh r0,[r6],#2
+	strh r0,[r8],#2
+	subs r4,r4,#1
+	bne gloop0
+
+	ldr r6,=MAPPED_RGB
+	mov r7,r6
+	ldr r1,gammavalue	;gamma value = 0 -> 4
+	mov r4,#64			;pce rgb, r1=R, r2=G, r3=B
+gloop					;map 0bbbbbgggggrrrrr  ->  0bbbbbgggggrrrrr
+	ldrb r0,[r6],#1
+	bl gammaconvert
+	mov r5,r0
+
+	ldrb r0,[r6],#1
+	bl gammaconvert
+	orr r5,r5,r0,lsl#5
+
+	ldrb r0,[r6],#1
+	bl gammaconvert
+	orr r5,r5,r0,lsl#10
+
+	strh r5,[r7],#2
+	strh r5,[r8],#2
+	subs r4,r4,#1
+	bne gloop
+
+	ldmfd sp!,{r4-r8,lr}
+	bx lr
+
+;----------------------------------------------------------------------------
+gammaconvert;	takes value in r0(0-0xFF), gamma in r1(0-4),returns new value in r0=0x1F
+;----------------------------------------------------------------------------
+	rsb r2,r0,#0x100
+	mul r3,r2,r2
+	rsbs r2,r3,#0x10000
+;	subne r2,r2,#0x2a8			;Tweak for Gamma #4...
+	rsb r3,r1,#4
+	orr r0,r0,r0,lsl#8
+	mul r2,r1,r2
+	mla r0,r3,r0,r2
+	mov r0,r0,lsr#13
+
+	bx lr
+;----------------------------------------------------------------------------
+PaletteTxAll
+;----------------------------------------------------------------------------
+	mov r2,#0x1F
+pxall
+	ldr r1,=nes_palette
+	ldrb r0,[r1,r2]	;load from nes palette
+
+	ldr r1,=MAPPED_RGB
+	ldr r0,[r1,r0,lsl#1]	;lookup RGB
+	ldr r1,=agb_pal
+	mov r3,r2,lsl#1
+	strh r0,[r1,r3]	;store in agb palette
+	subs r2,r2,#1
+	bpl pxall
+
+	bx lr
+
 ;----------------------------------------------------------------------------
 ppu_init	;(called from main.c) only need to call once
 ;----------------------------------------------------------------------------
@@ -212,8 +314,7 @@ ppureset_	;called with CPU reset
 	;mov r0,#1
 	;strb r0,vramaddrinc
 
-	b map_palette	;do palette mapping (for VS)
-
+	b paletteinit	;do palette mapping (for VS) & gamma
 ;----------------------------------------------------------------------------
 showfps_		;fps output, r0-r3=used.
 ;----------------------------------------------------------------------------
@@ -257,17 +358,41 @@ db1
 
 	bx lr
 ;----------------------------------------------------------------------------
+gammavalue DCD 0
 fpstext DCB "FPS:    "
 fpsenabled DCB 0
 fpschk	DCB 0
 		DCB 0,0
 ;----------------------------------------------------------------------------
+debug_		;debug output, r0=val, r1=line, r2=used.
+;----------------------------------------------------------------------------
+ [ DEBUG
+	ldr r2,=DEBUGSCREEN
+	add r2,r2,r1,lsl#6
+db0
+	mov r0,r0,ror#28
+	and r1,r0,#0x0f
+	cmp r1,#9
+	addhi r1,r1,#7
+	add r1,r1,#0x30
+	orr r1,r1,#0x4100
+	strh r1,[r2],#2
+	tst r2,#15
+	bne db0
+ ]
+	bx lr
+
+;----------------------------------------------------------------------------
 	AREA wram_code1, CODE, READWRITE
 irqhandler	;r0-r3,r12 are safe to use
 ;----------------------------------------------------------------------------
 	mov r2,#REG_BASE
+	mov r3,#REG_BASE
 	ldr r1,[r2,#REG_IE]!
 	and r1,r1,r1,lsr#16	;r1=IE&IF
+	ldrh r0,[r3,#-8]
+	orr r0,r0,r1
+	strh r0,[r3,#-8]
 
 		;---these CAN'T be interrupted
 		ands r0,r1,#0x80
@@ -278,7 +403,7 @@ irqhandler	;r0-r3,r12 are safe to use
 
 		;---these CAN be interrupted
 		ands r0,r1,#0x01
-		ldrne r12,=vblankinterrupt
+		ldrne r12,vblankfptr
 		bne jmpintr
 		ands r0,r1,#0x10
 		ldrne r12,=timer1interrupt
@@ -307,18 +432,28 @@ irq0
 	msr cpsr_cf,r3
 	ldmfd sp!,{r0,lr}
 	msr spsr_cf,r0
+vbldummy
 	bx lr
 ;----------------------------------------------------------------------------
+vblankfptr DCD vbldummy			;later switched to vblankinterrupt
 twitch	DCB 0
 flicker DCB 1
-		DCB 0,0
+		DCB 0		;was PAL60
+		DCB 0
 vblankinterrupt;
 ;----------------------------------------------------------------------------
 	stmfd sp!,{r4-r7,globalptr,lr}
 	ldr globalptr,=|wram_globals0$$Base|
 
-	strb r1,agb_vbl
-
+	ldr r0,emuflags
+	tst r0,#PALTIMING
+	beq nopal60
+	ldrb r0,PAL60
+	add r0,r0,#1
+	cmp r0,#6
+	movpl r0,#0
+	strb r0,PAL60
+nopal60
 	bl showfps_
 
 
@@ -531,13 +666,13 @@ PPU_R;
 	ldr pc,[pc,r0,lsl#2]
 	DCD 0
 PPU_read_tbl
-	DCD empty_R	;$2000
-	DCD empty_R	;$2001
-	DCD stat_R	;$2002
-	DCD empty_R	;$2003
-	DCD empty_R	;$2004
-	DCD empty_R	;$2005
-	DCD empty_R	;$2006
+	DCD empty_PPU_R	;$2000
+	DCD empty_PPU_R	;$2001
+	DCD stat_R		;$2002
+	DCD empty_PPU_R	;$2003
+	DCD empty_PPU_R	;$2004
+	DCD empty_PPU_R	;$2005
+	DCD empty_PPU_R	;$2006
 	DCD vmdata_R	;$2007
 ;----------------------------------------------------------------------------
 PPU_W;
@@ -546,14 +681,21 @@ PPU_W;
 	ldr pc,[pc,r2,lsl#2]
 	DCD 0
 PPU_write_tbl
-	DCD ctrl0_W	;$2000
-	DCD ctrl1_W	;$2001
-	DCD void	;$2002
-	DCD void	;$2003
-	DCD void	;$2004
+	DCD ctrl0_W		;$2000
+	DCD ctrl1_W		;$2001
+	DCD void		;$2002
+	DCD void		;$2003
+	DCD void		;$2004
 	DCD bgscroll_W	;$2005
 	DCD vmaddr_W	;$2006
 	DCD vmdata_W	;$2007
+
+
+;----------------------------------------------------------------------------
+empty_PPU_R
+;----------------------------------------------------------------------------
+	mov r0,#0
+	mov pc,lr
 ;----------------------------------------------------------------------------
 ctrl0_W		;(2000)
 ;----------------------------------------------------------------------------
@@ -924,36 +1066,17 @@ VRAM_pal	;write to VRAM palette area ($3F00-$3F1F)
 
 	and r0,r0,#0x3f		;(only colors 0-63 are valid)
 	and addy,addy,#0x1f
+		tst addy,#0x0f
+		moveq addy,#0	;$10 mirror to $00
 	adr r1,nes_palette
 	strb r0,[r1,addy]	;store in nes palette
 
 	ldr r1,=MAPPED_RGB
 	ldr r0,[r1,r0,lsl#1]	;lookup RGB
 	adr r1,agb_pal
-		tst addy,#0x0f
-		moveq addy,#0	;$10 mirror to $00
 	add addy,addy,addy	;lsl#1
 	strh r0,[r1,addy]	;store in agb palette
 	mov pc,lr
-;----------------------------------------------------------------------------
-debug_		;debug output, r0=val, r1=line, r2=used.
-;----------------------------------------------------------------------------
- [ DEBUG
-	ldr r2,=DEBUGSCREEN
-	add r2,r2,r1,lsl#6
-db0
-	mov r0,r0,ror#28
-	and r1,r0,#0x0f
-	cmp r1,#9
-	addhi r1,r1,#7
-	add r1,r1,#0x30
-	orr r1,r1,#0x4100
-	strh r1,[r2],#2
-	tst r2,#15
-	bne db0
- ]
-	bx lr
-
 ;----------------------------------------------------------------------------
 
 vram_write_tbl	;for vmdata_W, r0=data, addy=vram addr

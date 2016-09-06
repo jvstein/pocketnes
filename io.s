@@ -20,11 +20,21 @@
 	EXPORT gettime
 	EXPORT gbpadress
 	EXPORT LZ77UnCompVram
+	EXPORT waitframe
 
  AREA rom_code, CODE, READONLY ;-- - - - - - - - - - - - - - - - - - - - - -
 
+vbaprint
+	swi 0xFF0000		;!!!!!!! Doesn't work on hardware !!!!!!!
+	bx lr
 LZ77UnCompVram
 	swi 0x120000
+	bx lr
+waitframe
+VblWait
+	mov r0,#0				;don't wait if not necessary
+	mov r1,#1				;VBL wait
+	swi 0x040000			; Turn of CPU until VBLIRQ if not too late allready.
 	bx lr
 scaleparms;	   NH     FH     NV     FV
 	DCD 0x0000,0x0100,0xff00,0x0150,0xfeb6,OAM_BUFFER1+6,AGB_OAM+518
@@ -232,6 +242,7 @@ io_write_tbl
 joypad_write_ptr
 	DCD joy0_W	;$4016: Joypad 0 write
 	DCD void	;$4017: ?
+
 ;----------------------------------------------------------------------------
 dma_W	;(4014)		sprite DMA transfer
 ;----------------------------------------------------------------------------
@@ -240,28 +251,25 @@ PRIORITY EQU 0x800	;0x800=AGB OBJ priority 2/3
 
 	ldr r1,=3*512*CYCLE		; was 514...
 	sub cycles,cycles,r1
-	[ DEBUG
-		tst r0,#0x80		;DMA from rom?
-		adrne r0,dma_W
-		movne r1,#0
-		bne debug_
-	]
 	stmfd sp!,{r3-r6,lr}
 
+	and r1,r0,#0xe0
+	adr addy,memmap_tbl
+	ldr addy,[addy,r1,lsr#3]
 	and r0,r0,#0xff
-	add addy,nes_zpage,r0,lsl#8 ;addy=DMA source
+	add addy,addy,r0,lsl#8	;addy=DMA source
 
-	ldr r2,oambuffer+4	;r2=dest
+	ldr r2,oambuffer+4		;r2=dest
 	ldr r1,oambuffer+8
 	ldr r0,oambuffer
 	str r2,oambuffer
 	str r1,oambuffer+4
 	str r0,oambuffer+8
 
-        ldr r1,emuflags
+	ldr r1,emuflags
 	and r5,r1,#0x300
 	cmp r5,#SCALED_SPRITES*256
-	moveq r6,#0x300		;r6=rot/scale flag + double
+	moveq r6,#0x300			;r6=rot/scale flag + double
 	movne r6,#0
 
 	cmp r5,#UNSCALED_AUTO*256	;do autoscroll
@@ -269,8 +277,8 @@ PRIORITY EQU 0x800	;0x800=AGB OBJ priority 2/3
 	ldr r3,AGBjoypad
 	ands r3,r3,#0x300
 	eornes r3,r3,#0x300
-	bne dm0				;stop if L or R pressed (manual scroll)
-	mov r3,r1,lsr#16			;r3=follow value
+	bne dm0					;stop if L or R pressed (manual scroll)
+	mov r3,r1,lsr#16		;r3=follow value
 	tst r1,#FOLLOWMEM
 	ldreqb r0,[addy,r3,lsl#2]			;follow sprite
 	ldrneb r0,[nes_zpage,r3]			;follow memory
@@ -287,16 +295,16 @@ dm0
 	ldrb r0,ppuctrl0frame	;8x16?
 	tst r0,#0x20
 	bne dm4
-				;get sprite0 hit pos:
+							;get sprite0 hit pos:
 	tst r0,#0x08			;CHR base? (0000/1000)
-	moveq r4,#0+PRIORITY		;r4=CHR set+AGB priority
+	moveq r4,#0+PRIORITY	;r4=CHR set+AGB priority
 	movne r4,#0x100+PRIORITY
 	ldrb r0,[addy,#1]		;sprite tile#
 	mov r1,#AGB_VRAM
 	addeq r1,r1,#0x10000
 	addne r1,r1,#0x12000
 	add r0,r1,r0,lsl#5		;r0=VRAM base+tile*32
-	ldr r1,[r0]			;I don't really give a shit about Y flipping at the moment
+	ldr r1,[r0]				;I don't really give a shit about Y flipping at the moment
 	cmp r1,#0
 	ldreq r1,[r0,#4]!
 	cmpeq r1,#0
@@ -318,16 +326,16 @@ dm0
 	add r1,r1,r0,lsr#2
 ;	moveq r1,#512			;blank tile=no hit
 	cmp r1,#239
-	movhi r1,#512			;no hit if Y>240
+	movhi r1,#512			;no hit if Y>239
 	str r1,sprite0y
-;	ldrb r1,[addy,#3]			;r1=sprite0 x
+;	ldrb r1,[addy,#3]		;r1=sprite0 x
 ;	strb r1,sprite0x
 dm11
 	ldr r3,[addy],#4
 	and r0,r3,#0xff
 	cmp r0,#239
-	bhi dm10		;skip if sprite Y>239
-	ldrb r0,[r5,r0]		;y = scaled y
+	bhi dm10				;skip if sprite Y>239
+	ldrb r0,[r5,r0]			;y = scaled y
 
 	ands r1,r6,#0x100
 	add r1,r1,#0x200
@@ -342,22 +350,22 @@ dm11
 	and r1,r3,#0x00c00000	;flip
 	orr r0,r0,r1,lsl#6
 	and r1,r3,#0x00200000	;priority
-	orr r0,r0,r1,lsr#11	;Set Transp OBJ.
-	orr r0,r0,r6		;rot/scale, double
-	str r0,[r2],#4		;store OBJ Atr 0,1
+	orr r0,r0,r1,lsr#11		;Set Transp OBJ.
+	orr r0,r0,r6			;rot/scale, double
+	str r0,[r2],#4			;store OBJ Atr 0,1
 
 	and r1,r3,#0x0000ff00	;tile#
 	mov r0,r1,lsr#8
 	and r1,r3,#0x00030000	;color
 	orr r0,r0,r1,lsr#4
-	orr r0,r0,r4		;tileset+priority
-	strh r0,[r2],#4		;store OBJ Atr 2
+	orr r0,r0,r4			;tileset+priority
+	strh r0,[r2],#4			;store OBJ Atr 2
 dm9
 	tst addy,#0xff
 	bne dm11
 	ldmfd sp!,{r3-r6,pc}
 dm10
-	mov r0,#0x2a0		;double, y=160
+	mov r0,#0x2a0			;double, y=160
 	str r0,[r2],#8
 	b dm9
 
@@ -405,23 +413,23 @@ dm4	;- - - - - - - - - - - - -8x16
 	add r1,r1,#1
 	add r1,r1,r0,lsr#2
 ;	moveq r1,#512			;blank tile=no hit
-	cmp r1,#240
+	cmp r1,#239
 	movhi r1,#512			;no hit if Y>239
 	str r1,sprite0y
-;	ldrb r1,[addy,#3]			;r1=sprite0 x
+;	ldrb r1,[addy,#3]		;r1=sprite0 x
 ;	strb r1,sprite0x
 
 	mov r4,#PRIORITY
-	orr r6,r6,#0x8000	;8x16 flag
+	orr r6,r6,#0x8000		;8x16 flag
 dm12
 	ldr r3,[addy],#4
 	and r0,r3,#0xff
 	cmp r0,#239
-	bhi dm13		;skip if sprite Y>239
+	bhi dm13				;skip if sprite Y>239
 	tst r6,#0x300
 	subne r0,r0,#5
 	andne r0,r0,#0xff
-	ldrb r0,[r5,r0]		;y
+	ldrb r0,[r5,r0]			;y
 
 	ands r1,r6,#0x100
 	add r1,r1,#0x200
@@ -436,23 +444,23 @@ dm12
 	and r1,r3,#0x00c00000	;flip
 	orr r0,r0,r1,lsl#6
 	and r1,r3,#0x00200000	;priority
-	orr r0,r0,r1,lsr#11	;Set Transp OBJ.
-	orr r0,r0,r6		;8x16+rot/scale
-	str r0,[r2],#4		;store OBJ Atr 0,1
+	orr r0,r0,r1,lsr#11		;Set Transp OBJ.
+	orr r0,r0,r6			;8x16+rot/scale
+	str r0,[r2],#4			;store OBJ Atr 0,1
 
 	and r1,r3,#0x0000ff00	;tile#
 	movs r0,r1,lsr#9
 	orrcs r0,r0,#0x80
-	orr r0,r4,r0,lsl#1	;priority, tile#*2
+	orr r0,r4,r0,lsl#1		;priority, tile#*2
 	and r1,r3,#0x00030000	;color
 	orr r0,r0,r1,lsr#4
-	strh r0,[r2],#4		;store OBJ Atr 2
+	strh r0,[r2],#4			;store OBJ Atr 2
 dm14
 	tst addy,#0xff
 	bne dm12
 	ldmfd sp!,{r3-r6,pc}
 dm13
-	mov r0,#0x2a0		;double, y=160
+	mov r0,#0x2a0			;double, y=160
 	str r0,[r2],#8
 	b dm14
 ;----------------------------------------------------------------------------
@@ -464,45 +472,45 @@ serialinterrupt
 	mov r0,#0x1
 serWait	subs r0,r0,#1
 	bne serWait
-	mov r0,#0x100		;time to wait.
+	mov r0,#0x100			;time to wait.
 	ldrh r1,[r3,#REG_SIOCNT]
-	tst r1,#0x80		;Still transfering?
+	tst r1,#0x80			;Still transfering?
 	bne serWait
 
-	tst r1,#0x40		;communication error? resend?
+	tst r1,#0x40			;communication error? resend?
 	bne sio_err
 
 	ldr r0,[r3,#REG_SIOMULTI0]	;Both SIOMULTI0&1
 	ldr r1,[r3,#REG_SIOMULTI2]	;Both SIOMULTI2&3
 
-	and r2,r0,#0xff00	;From Master
+	and r2,r0,#0xff00		;From Master
 	cmp r2,#0xaa00
-	beq resetrequest	;$AAxx means Master GBA wants to restart
+	beq resetrequest		;$AAxx means Master GBA wants to restart
 
 	ldr r2,sending
 	tst r2,#0x10000
 	beq sio_err
-	strne r0,received0	;store only if we were expecting something
-	strne r1,received1	;store only if we were expecting something
-	eor r2,r2,r0		;Check if master sent what we expected
+	strne r0,received0		;store only if we were expecting something
+	strne r1,received1		;store only if we were expecting something
+	eor r2,r2,r0			;Check if master sent what we expected
 	ands r2,r2,#0xff00
-	strne r0,received2	;otherwise print value.
-	strne r1,received3	;otherwise print value.
+	strne r0,received2		;otherwise print value.
+	strne r1,received3		;otherwise print value.
 
 ;	mov r3,#AGB_PALETTE
-;	mov r1,#-1		;white
-;	strh r1,[r3]		;BG palette
+;	mov r1,#-1				;white
+;	strh r1,[r3]			;BG palette
 sio_err
-	strb r3,sending+2	;send completed, r3b=0
+	strb r3,sending+2		;send completed, r3b=0
 	bx lr
 
 resetrequest
 ;	mov r3,r1,asr#16
 ;	cmp r3,#-1
-;	moveq r3,#3		;up to 3 players.
-;	movne r3,#4		;all 4 players
+;	moveq r3,#3			;up to 3 players.
+;	movne r3,#4			;all 4 players
 ;	cmp r1,#-1
-;	moveq r3,#2		;only 2 players.
+;	moveq r3,#2			;only 2 players.
 ;	mov r3,#3
 ;	str r3,nrplayers
 
@@ -540,7 +548,7 @@ xmit	;send byte in r0
 
 	ldr r2,received0
 	ldr r3,received1
-	cmp r2,#-1		;Check for uninitialized
+	cmp r2,#-1			;Check for uninitialized
 	eoreq r2,r2,#0xf00
 	ldr r4,nrplayers
 	cmp r4,#2
@@ -688,8 +696,10 @@ refreshNESjoypads	;call every frame
 ;	ands r0,r0,#0		;Z=1
 ;	mov pc,r6
 	
-no4scr	tst r2,#0x20000000
-	streqb r0,joy0state
+no4scr
+	tst r2,#0x20000000
+	strneb r0,joy0state
+	tst r2,#0x40000000
 	strneb r0,joy1state
 	ands r0,r0,#0		;Z=1
 	mov pc,r6
@@ -775,7 +785,7 @@ sendreset       ;exits with r1=emuflags, r4=REG_SIOCNT, Z=1 if send was OK
 	mov pc,lr
 
 gbpadress DCD 0x04000000
-joycfg DCD 0x40ff01ff ;byte0=auto mask, byte1=(saves R)bit2=SwapAB, byte2=R auto mask
+joycfg DCD 0x20ff01ff ;byte0=auto mask, byte1=(saves R)bit2=SwapAB, byte2=R auto mask
 ;bit 31=single/multi, 30,29=1P/2P, 27=(multi) link active, 24=reset signal received
 joy0state DCB 0
 joy1state DCB 0

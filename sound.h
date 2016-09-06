@@ -1,6 +1,7 @@
 	IMPORT sound_reset_
 	IMPORT timer1interrupt
 	IMPORT updatesound
+	IMPORT make_freq_table
 	IMPORT _4000w
 	IMPORT _4001w
 	IMPORT _4002w

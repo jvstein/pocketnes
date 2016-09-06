@@ -4,6 +4,7 @@
 	EXPORT timer1interrupt
 	EXPORT sound_reset_
 	EXPORT updatesound
+	EXPORT make_freq_table
 	EXPORT _4000w
 	EXPORT _4001w
 	EXPORT _4002w
@@ -114,8 +115,6 @@ pcm_mix
 
  AREA rom_code, CODE, READONLY ;-- - - - - - - - - - - - - - - - - - - - - -
 
-freqtbl
-	INCLUDE freqtbl.h
 ;----------------------------------------------------------------------------
 sound_reset_
 ;----------------------------------------------------------------------------
@@ -126,7 +125,7 @@ sound_reset_
 	orr r0,r0,#0x8000			;PWM 7-bit 131.072kHz
 	strh r0,[r1,#REG_SGBIAS]
 
-	ldr r0,=0xb00a0077		;stop all channels, output ratio=full range.  use directsound B, timer 0
+	ldr r0,=0xb00a0077			;stop all channels, output ratio=full range.  use directsound B, timer 0
 	str r0,[r1,#REG_SGCNT_L]
 
 	mov r0,#0x80
@@ -136,29 +135,29 @@ sound_reset_
 	strh r0,[r1,#REG_SG1CNT_L]	;square0 sweep off
 	str r0,sweepctrl
 	ldr r0,=0x10001010
-	str r0,soundctrl		;volume=0
+	str r0,soundctrl			;volume=0
 	mov r0,#0xffffff00
 	str r0,soundmask
-				;triangle reset
-	mov r0,#0x0040			;write to waveform bank 0
+								;triangle reset
+	mov r0,#0x0040				;write to waveform bank 0
 	strh r0,[r1,#REG_SG3CNT_L]
-	adr r6,trianglewav		;init triangle waveform
+	adr r6,trianglewav			;init triangle waveform
 	ldmia r6,{r2-r5}
 	add r7,r1,#REG_SGWR0_L
 	stmia r7,{r2-r5}
 	mov r0,#0x00000080
-	str r0,[r1,#REG_SG3CNT_L]		;sound3 enable, mute, write bank 1
+	str r0,[r1,#REG_SG3CNT_L]	;sound3 enable, mute, write bank 1
 	mov r0,#0x8000
-	strh r0,[r1,#REG_SG3CNT_X]		;sound3 init
+	strh r0,[r1,#REG_SG3CNT_X]	;sound3 init
 
 	strh r1,[r1,#REG_DM2CNT_H]	;DMA2 stop
 	add r0,r1,#REG_FIFO_B_L		;DMA2 destination..
 	str r0,[r1,#REG_DM2DAD]
 	ldr r0,=PCMWAV
 	str r0,[r1,#REG_DM2SAD]		;dmasrc=..
-	ldr r0,=0xB640			;noIRQ fifo 32bit repeat incsrc fixeddst
+	ldr r0,=0xB640				;noIRQ fifo 32bit repeat incsrc fixeddst
 	strh r0,[r1,#REG_DM2CNT_H]	;DMA start
-				;PCM reset:
+								;PCM reset:
 	mov r0,#-1
 	str r0,pcmcount
 	mov r0,#0x00001000
@@ -171,10 +170,30 @@ sound_reset_
 
 	mov r0,#-PCMWAVSIZE		;timer 1 counts samples played:
 	strh r0,[r1],#2
+	mov r0,#0					;disable timer 1 before enabling it again.
+	strh r0,[r1]
 	mov r0,#0xc4				;enable+irq+count up
 	strh r0,[r1],#2
 
-	mov pc,lr
+make_freq_table
+	ldr r0,emuflags
+	tst r0,#PALTIMING
+	ldreq r2,=2400				;0x10000000/111860 NTSC
+	ldrne r2,=2583				;0x10000000/103912 PAL
+	ldr r5,=FREQTBL
+	ldr r4,=2047
+frqloop
+	add r0,r4,#1
+	mul r0,r2,r0
+	mov r1,#2048
+	subs r0,r1,r0,lsr#11
+	movmi r0,#0
+	add r3,r4,r4
+	strh r0,[r5,r3]
+	subs r4,r4,#1
+	bpl frqloop
+
+	bx lr
 
 trianglewav				;Remember this is 4-bit
 	DCB 0x76,0x54,0x32,0x10,0x01,0x23,0x45,0x67,0x89,0xAB,0xCD,0xEF,0xFE,0xDC,0xBA,0x98
@@ -288,7 +307,7 @@ _4002w
 	ldr r0,sq0freq
 sq0setfreq			;updatesound jumps here
 	mov r0,r0,lsl#1
-	ldr r1,=freqtbl
+	ldr r1,=FREQTBL
 	ldrh r0,[r1,r0]		;freq lookup
 
 	str r0,saveSG11
@@ -310,7 +329,7 @@ _4003w
 	strb r0,sq0freq+1
 	ldr r0,sq0freq
 	mov r0,r0,lsl#1
-	ldr r1,=freqtbl
+	ldr r1,=FREQTBL
 	ldrh r0,[r1,r0]		;freq lookup
 
 	str r0,saveSG11
@@ -371,7 +390,7 @@ _4006w
 	ldr r0,sq1freq
 sq1setfreq			;updatesound jumps here
 	mov r0,r0,lsl#1
-	ldr r1,=freqtbl
+	ldr r1,=FREQTBL
 	ldrh r0,[r1,r0]		;freq lookup
 
 	str r0,saveSG21
@@ -393,7 +412,7 @@ _4007w
 	strb r0,sq1freq+1
 	ldr r0,sq1freq
 	mov r0,r0,lsl#1
-	ldr r1,=freqtbl
+	ldr r1,=FREQTBL
 	ldrh r0,[r1,r0]		;freq lookup
 
 	str r0,saveSG21
@@ -434,7 +453,7 @@ _400aw
 	strb r0,trifreq
 	ldr r0,trifreq
 	mov r0,r0,lsl#1
-	ldr r1,=freqtbl
+	ldr r1,=FREQTBL
 	ldrh r0,[r1,r0]		;freq lookup
 
 	mov r2,#REG_BASE
@@ -452,7 +471,7 @@ _400bw
 	strb r0,trifreq+1
 	ldr r0,trifreq
 	mov r0,r0,lsl#1
-	ldr r1,=freqtbl
+	ldr r1,=FREQTBL
 	ldrh r0,[r1,r0]		;freq lookup
 
 	mov r2,#REG_BASE

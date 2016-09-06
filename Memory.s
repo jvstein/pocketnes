@@ -27,10 +27,9 @@ empty_R		;read bad address (error)
 		b debug_
 	]
 
-;	mov nes_nz,addy,lsr#8
-;	mov pc,lr
+	mov nes_nz,addy,lsr#8
 void ;- - - - - - - - -empty function
-	mov nes_nz,#0	;VS excitebike likes this
+;	mov nes_nz,#0	;VS excitebike liked this, read from $3DDE ($2006).
 	mov pc,lr
 ;----------------------------------------------------------------------------
 empty_W		;write bad address (error)
@@ -69,9 +68,9 @@ sram_W	;sram write ($6000-$7FFF)
 ;----------------------------------------------------------------------------
 sram_W2	;write to real sram ($6000-$7FFF)
 ;----------------------------------------------------------------------------
-	sub r2,addy,#0x5800
+	sub r1,addy,#0x5800
+	strb r0,[nes_zpage,r1]
 		orr r1,addy,#0xe000000	;r1=e006000+
-	strb r0,[nes_zpage,r2]
 		add r1,r1,#0x8000		;r1=e00e000+
 		strb r0,[r1]
 	mov pc,lr

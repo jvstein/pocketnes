@@ -3,23 +3,28 @@
 #include "gba.h"
 #include "minilzo.107/minilzo.h"
 
-extern u32 g_emuflags;	//from cart.s
-extern u32 joycfg;		//from io.s
+extern u32 g_emuflags;		//from cart.s
+extern u32 joycfg;			//from io.s
 extern u32 font;
 extern u32 fontpal;
-extern u32 AGBinput;	//from ppu.s
+extern u32 *vblankfptr;		//from ppu.s
+extern u32 vbldummy;		//from ppu.s
+extern u32 vblankinterrupt;	//from ppu.s
+extern u32 AGBinput;		//from ppu.s
 extern u32 NESinput;
        u32 oldinput;
+extern u8 autostate;		//from ui.c
 
 extern romheader mb_header;
-const PALTIMING=4;		//Also in equates.h
+const PALTIMING=4;			//Also in equates.h
 
 //asm calls
-void loadcart(int,int);	//from cart.s
+void loadcart(int,int);		//from cart.s
 void run(int);
 void ppu_init(void);
-void resetSIO(u32);		//io.s
+void resetSIO(u32);			//io.s
 void LZ77UnCompVram(u32 *source,u16 *destination);		//io.s
+void waitframe(void);									//io.s
 
 void cls(int);
 void rommenu(void);
@@ -27,9 +32,9 @@ int drawmenu(int);
 int getinput(void);
 int ines(u8 *p);
 void splash(void);
-void waitframe(void);
 void drawtext(int,char*,int);
 void readconfig(void);		//sram.c
+void quickload(void);
 void backup_nes_sram(void);
 void get_saved_sram(void);	//sram.c
 
@@ -38,9 +43,9 @@ u8 *textstart;//points to first NES rom (initialized by boot.s)
 int roms;//total number of roms
 
 char pogoshell_romname[32];	//keep track of rom name (for state saving, etc)
-int rtc=0;
-int pogoshell=0;
-int gameboyplayer=0;
+char rtc=0;
+char pogoshell=0;
+char gameboyplayer=0;
 
 int ne=0x454e;
 void C_entry() {
@@ -51,6 +56,8 @@ void C_entry() {
 	else pogoshell=0;
 	*timeregs=1;
 	if(*timeregs==1) rtc=1;
+	vblankfptr=&vbldummy;
+	ppu_init();
 
 	if(pogoshell){
 		u32 *magptr=(u32*)0x08000000;
@@ -110,21 +117,21 @@ void C_entry() {
 			p+=*(u32*)(p+32)+48;
 			i++;
 		}
-		if(!i)i=1;			//Stop PocketNES from crashing if there are no ROMs
+		if(!i)i=1;					//Stop PocketNES from crashing if there are no ROMs
 		roms=i;
 	}
 	if(REG_DISPCNT==FORCE_BLANK)	//is screen OFF?
-		REG_DISPCNT=0;		//screen ON
-	*MEM_PALETTE=-1;	//white background
-	REG_BLDCNT=0xff;	//(brightness decrease all)
+		REG_DISPCNT=0;				//screen ON
+	*MEM_PALETTE=0x7FFF;			//white background
+	REG_BLDCNT=0xff;				//(brightness decrease all)
 	for(i=0;i<17;i++) {
-		REG_COLY=i;	//fade to black
+		REG_COLY=i;					//fade to black
 		waitframe();
 	}
-	*MEM_PALETTE=0;		//black background (avoids blue flash when doing multiboot)
-	REG_DISPCNT=0;		//screen ON
+	*MEM_PALETTE=0;					//black background (avoids blue flash when doing multiboot)
+	REG_DISPCNT=0;					//screen ON
+	vblankfptr=&vblankinterrupt;
 	lzo_init();	//init compression lib for savestates
-	ppu_init();
 
 	//load font+palette
 	LZ77UnCompVram(&font,(u16*)0x6002400);
@@ -167,10 +174,12 @@ void rommenu(void) {
 	REG_BG2CNT=0x4600;	//16color 512x256 CHRbase0 SCRbase6 Priority0
 	REG_DISPCNT=BG2_EN|OBJ_1D; //mode0, 1d sprites, main screen turn on
 	backup_nes_sram();
+
 	if(pogoshell)
 	{
 		loadcart(0,g_emuflags&0x304);		//Also save country
 		get_saved_sram();
+		if(autostate)quickload();
 		run(1);
 	}
 	else
@@ -183,20 +192,19 @@ void rommenu(void) {
 		int sel=selectedrom;
 
 		oldinput=AGBinput=~REG_P1;
-		resetSIO((joycfg&~0xff000000) + 0x40000000);//back to 1P
+		resetSIO((joycfg&~0xff000000) + 0x20000000);//back to 1P
     
 		i=drawmenu(sel);
 		loadcart(sel,i|(g_emuflags&0x300));  //(keep old gfxmode)
 		get_saved_sram();
 		lastselected=sel;
-		run(0);
 		if(romz>1){
 			for(i=0;i<8;i++)
 			{
 				waitframe();
 				REG_BG2HOFS=224-i*32;	//Move screen right
 			}
-			REG_COLY=7;
+			REG_COLY=7;			//Lighten screen
 		}
 		do {
 			key=getinput();
@@ -234,6 +242,7 @@ void rommenu(void) {
 			AGBinput=0;
 			run(0);
 		}
+		if(autostate)quickload();
 		run(1);
 	}
 }
@@ -323,9 +332,3 @@ void drawtext(int row,char *str,int hilite) {
 		here[i]=0x0120;
 }
 
-void waitframe(void) {
-#ifndef __DEBUGBUILD
-	while(REG_VCOUNT>=160) {};
-	while(REG_VCOUNT<160) {};
-#endif
-}

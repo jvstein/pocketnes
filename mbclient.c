@@ -7,11 +7,11 @@
 u8 *findrom(int);
 
 extern u8 Image$$RO$$Limit;
-extern u8 Image$$RW$$Limit;
+extern u8 Image$$ZI$$Base;
 extern u32 romnum;	//from cart.s
 extern u8 *textstart;	//from main.c
 
-extern int pogoshell;
+extern char pogoshell;
 
 romheader mb_header;
 
@@ -39,45 +39,37 @@ typedef struct {
   u8 reserve12;         // 75 ($4b)
 } MBStruct;
 
-const
+const u8 Client[]={
 #include "client.h"
-
-void delay() {
-	int i=32768;
-	while(--i);	//(we're running from EXRAM)
-}
+};
 
 void DelayCycles (u32 cycles)
 {
-    __asm{mov r2, pc}
-    
-    // EWRAM
-    __asm{mov r1, #12}
-    __asm{cmp r2, #0x02000000}
-    __asm{beq MultiBootWaitCyclesLoop}
-    
-    // ROM 4/2 wait
-    __asm{mov r1, #14}
-    __asm{cmp r2, #0x08000000}
-    __asm{beq MultiBootWaitCyclesLoop}
-    
-    // IWRAM
-    __asm{mov r1, #4}
-    
-    __asm{MultiBootWaitCyclesLoop:}
-    __asm{sub r0, r0, r1}
-    __asm{bgt MultiBootWaitCyclesLoop}
+	__asm{mov r2, pc};
+	__asm{lsr r2, #24};
+	__asm{mov r1, #12};
+	__asm{cmp r2, #0x02};
+	__asm{beq MultiBootWaitCyclesLoop};
+
+	__asm{mov r1, #14};
+	__asm{cmp r2, #0x08};
+	__asm{beq MultiBootWaitCyclesLoop};
+
+	__asm{mov r1, #4};
+
+	__asm{MultiBootWaitCyclesLoop:};
+	__asm{sub r0, r1};
+	__asm{bgt MultiBootWaitCyclesLoop};
 }
 
-u16 xfer(u32 send) {
-    u32 i;
-	
-    i=1000;
-	
+int xfer(u32 send) {
+	int i;
 	REG_SIOMLT_SEND = send;
+	DelayCycles(600);
 	REG_SIOCNT = 0x2083;
-	while((REG_SIOCNT & 0x80) && --i) {DelayCycles(10);}
-	return (REG_SIOMULTI1);
+	i=0x2000;
+	while(--i>=0 && (REG_SIOCNT&0x80));
+	return (REG_SIOMULTI1|i&0x80000000);	//return negative on timeout
 }
 
 int swi25(void *p) {
@@ -85,13 +77,13 @@ int swi25(void *p) {
 	__asm{swi 0x25, {r0-r1}, {}, {r0-r2} }
 }
 
-//returns error code:  1=no link, 2=bad send, 3=too big
+//returns error code:  2=bad send, 3=too big
 #define TIMEOUT 40
 int SendMBImageToClient(void) {
 	MBStruct mp;
 	u8 palette;
-	u32 i,j;
-	u16 key;
+	int i,j,k;
+	u8 key;
 	u16 *p;
 	u16 slaves;
 	u16 ie;
@@ -103,39 +95,18 @@ int SendMBImageToClient(void) {
 
 //	emusize=((u32)(&Image$$RO$$Limit)&0x3ffff)+((u32)(&Image$$RW$$Limit)&0x7fff);
 	emusize1=((u32)(&Image$$RO$$Limit)&0x3ffff);
-	emusize2=((u32)(&Image$$RW$$Limit)&0x7fff);
+	emusize2=((u32)(&Image$$ZI$$Base)&0x7fff);
 	if(pogoshell) romsize=48+16+(*(u8*)(findrom(romnum)+48+4))*16*1024+(*(u8*)(findrom(romnum)+48+5))*8*1024;  //need to read this from ROM
 	else romsize=sizeof(romheader)+*(u32*)(findrom(romnum)+32);
 	if(emusize1+romsize>max_multiboot_size) return 3;
 
-
-#if 0
-    //this check frequently causes hangs, and is not necessary
-	REG_RCNT=0x8003;		//general purpose comms - sc/sd inputs
-	i=TIMEOUT;
-	while(--i && (REG_RCNT&3)==3) delay();
-	if(!i) return 1;
-
-	i=TIMEOUT;
-	while(--i && (REG_RCNT&3)!=3) delay();
-	if(!i) return 1;
-#endif
-
-	REG_RCNT=0;			//non-general purpose comms
-
-	i=250;
+	i=50;
+	REG_RCNT=0;			//multi-comms
 	do {
-		DelayCycles(10);
-		j=xfer(0x6200);
-	} while(--i && j);
-	if(!i) return 2;
-
-	i=1500;
-	do {
-		DelayCycles(10);
 		j=xfer(0x6200);
 	} while(--i && (j&0xfff0)!=0x7200);
 	if(!i) return 2;
+
 	slaves=(j&0xe);
 
 	xfer(0x6100 + slaves);
@@ -154,7 +125,6 @@ int SendMBImageToClient(void) {
 	i=(i+15)&~15;		//16 byte units
 	mp.endp=(u8*)Client+i;
 
-	palette = 0xef;
 //8x=purple->blue
 //9x=blue->emerald
 //ax=emerald->green
@@ -162,19 +132,17 @@ int SendMBImageToClient(void) {
 //cx=yellow->red
 //dx=red->purple
 //ex=purple->white
+	palette = 0xef;
 	mp.palette = palette;
 
 	xfer(0x6300+palette);
-	i=xfer(0x6300+palette);
-
-	mp.cd[0] = i;
-	mp.cd[1] = 0xff;
-	mp.cd[2] = 0xff;
-
-	key = (0x11 + (i & 0xff) + 0xff + 0xff) & 0xff;
+	xfer(0x6300+palette);
+	key=0x11;
+	key+=mp.cd[0]=REG_SIOMULTI1&0xff;
+	key+=mp.cd[1]=REG_SIOMULTI2&0xff;
+	key+=mp.cd[2]=REG_SIOMULTI3&0xff;
 	mp.hs_data = key;
-
-	xfer(0x6400 | (key & 0xff));
+	xfer(0x6400 | key);
 
 	ie=REG_IE;
 	REG_IE=0;		//don't interrupt
@@ -187,27 +155,35 @@ int SendMBImageToClient(void) {
 		i=2;
 		goto transferEnd;
 	}
+
 	//now send everything else
 
-	REG_RCNT=0;			//non-general purpose comms
-	i=200;
-	do {
-		delay();
-		j=xfer(0x99);
-	} while(--i && j!=0x99); //wait til client is ready
-	if(!i){ //mbclient not responding
+	REG_RCNT=0;			//multi-comms
+	i=100;
+	j=(emusize1+emusize2+romsize)>>2;
+	do {				//send size to client, wait for response
+		DelayCycles(1000000);
+		k=xfer(j);
+	} while(--i && j!=k);
+
+	if(!i) {				//client not responding?
 		i=2;
 		goto transferEnd;
 	}
-	xfer(emusize1+emusize2+romsize);		//transmission size..
-	xfer((emusize1+emusize2+romsize)>>16);
 
 	p=(u16*)((u32)0x2000000);	//(from ewram.)
-	for(;emusize1;emusize1-=2)		//send first part of emu
-		xfer(*(p++));
+
+	do {					//send first part of emu
+		j=xfer(*(p++));
+		emusize1-=2;
+	} while(emusize1 && j>=0);
+
 	p=(u16*)0x3000000;			//(from iwram)
-	for(;emusize2;emusize2-=2)		//send second part of emu
-		xfer(*(p++));
+	do {					//send second part of emu
+		j=xfer(*(p++));
+		emusize2-=2;
+	} while(emusize2 && j>=0);
+
 	if(pogoshell)
 	{
 		mb_header.filesize=romsize;
@@ -218,9 +194,11 @@ int SendMBImageToClient(void) {
 
 		p=(u16*)findrom(romnum)+sizeof(romheader)/2;
 	}
-	else p=(u16*)findrom(romnum);	//send ROM
-	for(;romsize;romsize-=2)
-		xfer(*(p++));
+	else p=(u16*)findrom(romnum);
+	do {				//send ROM
+		j=xfer(*(p++));
+		romsize-=2;
+	} while(romsize && j>=0);
 	i=0;
 transferEnd:
 	REG_IE=ie;

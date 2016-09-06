@@ -12,10 +12,12 @@ extern u8 Image$$RO$$Limit;
 extern u8 g_cartflags;	//(from iNES header)
 extern char g_scaling;	//(cart.s) current display mode
 extern char flicker;	//from ppu.s
-extern u8 stime;		//from main.c
+extern u8 stime;		//from ui.c
+extern u8 autostate;	//from ui.c
 extern u8 *textstart;	//from main.c
+extern u32 gammavalue;	//(ppu.s) current gammavalue
 
-extern int pogoshell;
+extern char pogoshell;	//main.c
 
 int totalstatesize;	//how much SRAM is used
 
@@ -23,7 +25,7 @@ int totalstatesize;	//how much SRAM is used
 u8 *findrom(int);
 void cls(int);		//main.c
 void drawtext(int,char*,int);
-void scrolll(void);
+void scrolll(int f);
 void scrollr(void);
 void waitframe(void);
 u32 getmenuinput(int);
@@ -55,7 +57,7 @@ typedef struct {		//(modified stateheader)
 	u16 size;
 	u16 type;	//=CONFIGSAVE
 	char displaytype;
-	char sleepflick;
+	char misc;
 	char reserved2;
 	char reserved3;
 	u32 sram_checksum;	//checksum of rom using SRAM e000-ffff	
@@ -81,10 +83,10 @@ void debug_(u32 n,int line);
 void errmsg(char *s) {
 	int i;
 
-	drawtext(9,s,0);
+	drawtext(32+9,s,0);
 	for(i=30;i;--i)
 		waitframe();
-	drawtext(9,"                     ",0);
+	drawtext(32+9,"                     ",0);
 }*/
 
 void getsram() {		//copy GBA sram to BUFFER1
@@ -331,7 +333,7 @@ void managesram() {
 	if(!menuitems)
 		return;		//nothing to do!
 
-	scrolll();
+	scrolll(0);
 	do {
 		i=getmenuinput(menuitems);
 		if(i&SELECT) {
@@ -356,7 +358,7 @@ void savestatemenu() {
 
 	selected=0;
 	drawstates(SAVEMENU,&menuitems,&offset);
-	scrolll();
+	scrolll(0);
 	do {
 		i=getmenuinput(menuitems);
 		if(i&(A_BTN)) {
@@ -539,7 +541,7 @@ void loadstatemenu() {
 	if(!menuitems)
 		return;		//nothing to load!
 
-	scrolll();
+	scrolll(0);
 	do {
 		key=getmenuinput(menuitems);
 		if(key&(A_BTN)) {
@@ -587,11 +589,14 @@ void writeconfig() {
 		memcpy(BUFFER3,&configtemplate,sizeof(configdata));
 		cfg=(configdata*)BUFFER3;
 	}
-	cfg->displaytype=g_scaling;				//store current display type
-	j = stime & 0xF;					//store current autosleep time
+	j =(g_scaling & 0xF);						//store current display type
+	j |= (gammavalue & 0x7)<<5;					//store current gamma value
+	cfg->displaytype = j;
+	j = stime & 0xf;							//store current autosleep time
+	j |= (autostate & 0x1)<<5;					//store current autostate setting
 	j |= ((flicker & 0x1)^1)<<4;				//store current flicker setting
-	cfg->sleepflick = j;
-	if(g_cartflags&2) {					//update sram owner
+	cfg->misc = j;
+	if(g_cartflags&2) {							//update sram owner
 			cfg->sram_checksum=checksum(romstart);
 	}
 	if(i<0) {	//create new config
@@ -602,17 +607,20 @@ void writeconfig() {
 }
 
 void readconfig() {
-	int i,j;
+	int i;
 	configdata *cfg;
 	if(!using_flashcart())
 		return;
 
 	i=findstate(0,CONFIGSAVE,(stateheader**)&cfg);
 	if(i>=0) {
-		g_scaling=cfg->displaytype;
-		j = cfg->sleepflick;
-		stime = (j & 0xF);				//restore current autosleep time
-		flicker = ((j & 0x10)^0x10)>>4;			//restore current flicker setting
+		i = cfg->displaytype;					//restore display type
+		g_scaling = (i & 0xF);
+		gammavalue = (i & 0xE0)>>5;				//restore gamma value
+		i = cfg->misc;
+		stime = i & 0xf;						//restore autosleep time
+		autostate = (i & 0x20)>>5;				//restore autostate setting
+		flicker = ((i & 0x10)^0x10)>>4;			//restore flicker setting
 	}
 }
 void clean_nes_sram() {
@@ -630,11 +638,13 @@ void clean_nes_sram() {
 		memcpy(BUFFER3,&configtemplate,sizeof(configdata));
 		cfg=(configdata*)BUFFER3;
 	}
-	cfg->displaytype=g_scaling;				//store current display type
-	j = stime & 0xF;					//store current autosleep time
-	j |= (flicker & 0xF)<<4;				//store current flicker setting
-	cfg->sleepflick = j;
-	cfg->sram_checksum=0;			// we don't want to save the empty sram
+	j = (g_scaling & 0xF);						//store current display type
+	j |= (gammavalue & 0x7)<<5;					//store current gamma value
+	cfg->displaytype = j;
+	j = stime & 0xf;							//store current autosleep time
+	j |= ((flicker & 0x1)^1)<<4;				//store current flicker setting
+	cfg->misc = j;
+	cfg->sram_checksum=0;						// we don't want to save the empty sram
 	if(i<0) {	//create new config
 		updatestates(0,0,CONFIGSAVE);
 	} else {		//config already exists, update sram directly (faster)

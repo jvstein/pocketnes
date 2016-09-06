@@ -15,12 +15,14 @@
 	IMPORT pcmctrl
 
 	EXPORT nes_reset
+	EXPORT ntsc_pal_reset
+	EXPORT cpuhack_reset
 	EXPORT run
 	EXPORT op_table
 	EXPORT default_scanlinehook
 	EXPORT pcm_scanlinehook
 	EXPORT irq6502
-	EXPORT agb_vbl
+	EXPORT PAL60
 	EXPORT cpustate
 	EXPORT rommap
 	EXPORT frametotal
@@ -1078,7 +1080,7 @@ waitformulti
 	and r1,r1,r0		;r1=button state (0->1)
 	str r0,AGBjoypad
 
-        ldrb r3,emuflags+1
+	ldrb r3,emuflags+1
 	cmp r3,#SCALED
 	bhs %F0			;if unscaled
 	ldr r3,windowtop
@@ -1169,21 +1171,20 @@ line0x
 
 
  [ BUILD <> "DEBUG"
-	ldrb r1,novblankwait
-	teq r1,#1
+	ldrb r4,novblankwait
+	teq r4,#1				;NoVSync?
 	beq l03
 l01
-	swieq 0x020000		; Turn of CPU until IRQ if not too late allready.
-	ldrb r0,agb_vbl		;wait for AGB VBL
-	cmp r0,#0
+	mov r0,#0				;don't wait if not necessary
+	mov r1,#1				;VBL wait
+	swi 0x040000			; Turn of CPU until IRQ if not too late allready.
+	ldrb r0,PAL60			;wait for AGB VBL
+	cmp r0,#5
 	beq l01
-	teq r1,#2		;Check for slomo
-	moveq r1,#0
-	streqb r1,agb_vbl
+	teq r4,#2				;Check for slomo
+	moveq r4,#0
 	beq l01
 l03
-	mov r0,#0
-	strb r0,agb_vbl
  ]
 	ldr r0,fpsvalue
 	add r0,r0,#1
@@ -1236,16 +1237,18 @@ line120_to_240 ;------------------------
 	str addy,nexttimeout
 	ldr pc,scanlinehook
 line242 ;------------------------
-NMIDELAY EQU CYCLE*30
+NMIDELAY EQU CYCLE*21
 	add cycles,cycles,#NMIDELAY	;NMI is delayed a few cycles..
 
-	mov r1,#0x80
-	strb r1,ppustat		;vbl flag
+;	ldrb r1,ppustat
+;	orr r1,r1,#0x90		;vbl & vram write
+	mov r1,#0x80		;vbl flag
+	strb r1,ppustat
 
-	adr addy,line241NMI
+	adr addy,line242NMI
 	str addy,nexttimeout
 	b default_scanlinehook
-line241NMI ;---------------------------
+line242NMI ;---------------------------
 	ldr r0,frame
 	add r0,r0,#1
 	str r0,frame
@@ -1356,23 +1359,13 @@ irq6502
 fiveminutes DCD 5*60*60
 sleeptime DCD 5*60*60
 dontstop DCD 0
-agb_vbl DCB 0		;nonzero when AGB enters vblank
 novblankwait DCB 0
+PAL60 DCB 0
 ;----------------------------------------------------------------------------
 	AREA rom_code, CODE, READONLY
-
-nes_reset	;called by loadcart (r0-r9 are free to use)
 ;----------------------------------------------------------------------------
-	mov addy,lr
 
-	bl IO_reset_
-	bl sound_reset_
-	bl ppureset_
-;---SRAM setup
-	ldrb r0,cartflags
-	tst r0,#SRAM			;use sram?
-	ldrne r1,=sram_W2			;write to cart sram
-	strne r1,writemem_tbl+12
+ntsc_pal_reset
 ;---NTSC/PAL
 	ldr r0,emuflags
 	tst r0,#PALTIMING
@@ -1382,17 +1375,44 @@ nes_reset	;called by loadcart (r0-r9 are free to use)
 	ldreq r1,=261			;NTSC
 	ldrne r1,=311			;PAL
 	str r1,lastscanline
-;---cpu reset
+	ldr r1,=PAL60
+	mov r0,#0
+	strb r0,[r1]			;wait for AGB VBL
+	bx lr
+
+cpuhack_reset
+	ldr r0,emuflags
 	tst r0,#NOCPUHACK	;load opcode set
 	adr r1,jmpops
 	adrne r1,normalops
-	adr r3,opindex
-	mov r4,#8
-nr0	ldr r5,[r1,r4,lsl#2]
-	ldr r6,[r3,r4,lsl#2]
-	str r5,[r6]
-	subs r4,r4,#1
+	adr r2,opindex
+	mov r3,#8
+nr0	ldr r0,[r1,r3,lsl#2]
+	ldr r12,[r2,r3,lsl#2]
+	str r0,[r12]
+	subs r3,r3,#1
 	bpl nr0
+	bx lr
+
+;----------------------------------------------------------------------------
+nes_reset	;called by loadcart (r0-r9 are free to use)
+;----------------------------------------------------------------------------
+	str lr,[sp,#-4]!
+;	mov addy,lr
+
+	bl IO_reset_
+	bl sound_reset_
+	bl ppureset_
+;---SRAM setup
+	ldrb r0,cartflags
+	tst r0,#SRAM			;use sram?
+	ldrne r1,=sram_W2			;write to cart sram
+	strne r1,writemem_tbl+12
+
+;---NTSC/PAL
+	bl ntsc_pal_reset
+;---cpu reset
+	bl cpuhack_reset
 
 	mov nes_a,#0
 	mov nes_x,#0
@@ -1416,7 +1436,8 @@ nr0	ldr r5,[r1,r4,lsl#2]
 
 	adr r0,cpuregs
 	stmia r0,{nes_nz-nes_pc}
-	mov pc,addy
+	ldr pc,[sp],#4
+;	mov pc,addy
 normalops
 	DCD _10,_30,_50,_70,_90,_B0,_D0,_F0,_4C
 jmpops

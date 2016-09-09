@@ -79,6 +79,9 @@ const fptr multifnlist[]=
 
 const fptr fnlist1[]=
 {
+	#if SAVE
+	loadstatemenu,savestatemenu,
+	#endif
 	#if CHEATFINDER
 	ui5,
 	#endif
@@ -88,9 +91,6 @@ const fptr fnlist1[]=
 	#endif
 	#if MULTIBOOT
 	multiboot,
-	#endif
-	#if SAVE
-	savestatemenu,loadstatemenu,managesram,
 	#endif
 	sleep_,
 	#if GOMULTIBOOT
@@ -213,6 +213,12 @@ void drawui1()
 	drawtext(19,"DO NOT DISTRIBUTE",0);
 #endif
 	
+	#if SAVE
+    if(!ismulti()) {
+		print_1_1("Load State->");
+		print_1_1("Save State->");
+	}
+	#endif
 	#if CHEATFINDER
 	print_1_1("Cheat Finder->");
 	#endif
@@ -227,23 +233,14 @@ void drawui1()
 	#if MULTIBOOT
 	print_1_1("Link Transfer");
 	#endif
-	if(mainmenuitems==ARRSIZE(multifnlist)) {
-		print_1_1("Sleep");
-		print_1_1("Restart");
-		print_1_1("Exit");
-	} else {
-		#if SAVE
-		print_1_1("Save State->");
-		print_1_1("Load State->");
-		print_1_1("Manage SRAM->");
-		#endif
-		print_1_1("Sleep");
-		#if GOMULTIBOOT
+	print_1_1("Sleep");
+	#if GOMULTIBOOT
+	if(!ismulti()) {
 		print_1_1("Go Multiboot");
-		#endif
-		print_1_1("Restart");
-		print_1_1("Exit");
 	}
+	#endif
+	print_1_1("Restart");
+	print_1_1("Exit");
 }
 
 int GetRegion()
@@ -351,7 +348,7 @@ u32 getmenuinput(int menuitems)
 void ui()
 {
 	int key,soundvol,oldsel,tm0cnt,i;
-	int mb=(u32)textstart<0x8000000;
+	int mb=ismulti();
 
 	autoA=joycfg&A_BTN?0:1;
 	autoA|=joycfg&(A_BTN<<16)?0:2;
@@ -359,7 +356,6 @@ void ui()
 	autoB|=joycfg&(B_BTN<<16)?0:2;
 
 	mainmenuitems=MENUXITEMS[mb];
-//	mainmenuitems=((u32)textstart>0x8000000?CARTMENUITEMS:MULTIBOOTMENUITEMS);//running from rom or multiboot?
 	FPSValue=0;					//Stop FPS meter
 
 	soundvol=REG_SOUNDCNT_L;
@@ -401,7 +397,7 @@ void ui()
 			oldsel=selected;
 			fnlistX[mb][selected]();
 			selected=oldsel;
-			if (mb != ((u32)textstart<0x8000000))
+			if (mb != ismulti())
 			{
 				mb=1;
 				selected=0;
@@ -433,6 +429,10 @@ void ui()
 	REG_SOUNDCNT_L=soundvol;	//resume sound (GB)
 	REG_TM0CNT_H=tm0cnt;		//resume sound (directsound)
 	cls(3);
+}
+
+int ismulti() {
+	return (u32)textstart<0x8000000;
 }
 
 void subui(int menunr) {

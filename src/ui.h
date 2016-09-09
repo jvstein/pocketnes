@@ -77,6 +77,7 @@ int text2(int row,const char *str);
 void strmerge(char *dst,const char *src1,const char *src2);
 void strmerge3(char *dst,const char *src1,const char *src2, const char *src3);
 void strmerge4(char *dst,const char *src1,const char *src2, const char *src3, const char *src4);
+int ismulti(void);
 
 #if CHEATFINDER | EDITFOLLOW
 char *hexn(unsigned int n, int digits);
